@@ -1,66 +1,38 @@
 # Text-to-Speech Application with Dia-1.6B
 
-A full-stack text-to-speech application using the Dia-1.6B model, FastAPI backend, and Svelte frontend.
+- A full-stack text-to-speech application using the Dia-1.6B model, FastAPI backend, and Svelte frontend. 
+- Deployment: Pruna and Koyeb
+- Demo of the app
 
-## Features
-
-- Text-to-speech conversion using the Dia-1.6B model
-- Interactive web interface
-- Sound effect insertion support
-- Real-time audio playback
-- Automatic file cleanup
-
-## Prerequisites
-
-- Python 3.10 or higher
-- Node.js 16 or higher
-- pnpm (for frontend package management)
+![Text-to-Speech App Demo](assets/Screenshot%202025-05-27%20at%2011.37.46.png)
 
 ## Project Structure
 
 The project consists of two main directories:
-- `backend/`: Contains the FastAPI server and Dia model implementation
-- `frontend/`: Contains the Svelte frontend application
+- `backend/`: Contains the FastAPI server and Dia model implementation.
+- `frontend/`: Contains the Svelte frontend application.
 
 ## Setup Instructions
 
-### 1. Clone the Repository
+- Steps to set up and deploy this project.
 
-Clone the repository and navigate to the project directory.
+## How to Build the Project
 
-### 2. Backend Setup
+- Instructions on how to set up the project from scratch: 
+   - **Backend**
+   - **Frontend**
+   - **Connect backend and frontend**
+   - **Deploy on Koyeb**
 
-1. Create and activate a virtual environment
-2. Install the required dependencies:
-   - fastapi
-   - uvicorn
-   - soundfile
-   - descript-audio-codec
-   - safetensors
+## What to Do
 
-### 3. Frontend Setup
+- **Deploy on Koyeb**
 
-Navigate to the frontend directory and install dependencies using pnpm.
-
-## Running the Application
-
-1. Start the Backend:
-   - Navigate to the backend directory
-   - Run the uvicorn server with reload enabled
-   - Server will be available at `http://localhost:8000`
-
-2. Start the Frontend:
-   - Navigate to the frontend directory
-   - Run the development server
-   - Access the application at `http://localhost:5173`
-
-
-## What to add
-For the app: 
-   - Improve the frontend layout
-   - clean the code
-Blog post: 
-   - More about the model and where to find more about it
-   - Step by step on how to build the app
-   - How to deploy the model on koyeb
-
+For the code:
+   - **Improve the frontend layout**:
+      - Create a chat layout or similar design to clearly distinguish different persons talking.
+      - And make it more appealing
+   - **Fix the bug**:
+      - Currently, there is a bug where the model adds gibberish after it has "read" the text.
+   - **Check inference**
+   - **Clean the code**:
