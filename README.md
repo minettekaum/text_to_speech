@@ -24,7 +24,10 @@ The project consists of two main directories:
    - **Connect backend and frontend**
    - **Deploy on Koyeb**
 
-## What to Do
+## Trouble Shooting
+- Common troubleshooting steps and solutions.
+
+# (Minette) Next Steps before deployment
 
 - **Deploy on Koyeb**
 
