@@ -4,7 +4,7 @@
 - Deployment: Pruna and Koyeb
 - Demo of the app
 
-![Text-to-Speech App Demo](assets/Screenshot%202025-05-27%20at%2011.37.46.png)
+![Text-to-Speech App Demo](assets/demo.png)
 
 ## Project Structure
 
@@ -35,7 +35,7 @@ For the code:
    - **Improve the frontend layout**:
       - Create a chat layout or similar design to clearly distinguish different persons talking.
       - And make it more appealing
-   - **Fix the bug**:
+   - **Add generations parameters**:
       - Currently, there is a bug where the model adds gibberish after it has "read" the text.
    - **Check inference**
    - **Clean the code**:
