@@ -35,7 +35,7 @@ For the code:
    - **Improve the frontend layout**:
       - Create a chat layout or similar design to clearly distinguish different persons talking.
       - And make it more appealing
-   - **Add generations parameters**:
+   - **Add generation parameters**:
       - Currently, there is a bug where the model adds gibberish after it has "read" the text.
    - **Check inference**
    - **Clean the code**
