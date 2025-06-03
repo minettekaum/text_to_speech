@@ -38,4 +38,4 @@ For the code:
    - **Add generations parameters**:
       - Currently, there is a bug where the model adds gibberish after it has "read" the text.
    - **Check inference**
-   - **Clean the code**:
+   - **Clean the code**
