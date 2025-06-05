@@ -1,6 +1,15 @@
 <script lang="ts">
+    interface Message {
+        speaker: string;
+        text: string;
+    }
+
+    let messages: Message[] = [];
+    let currentInput = '';
+    let availableSpeakers: string[] = ['[S1]'];
+    let selectedSpeaker = '[S1]';
+    let maxSpeakerNumber = 1;  // Track the highest speaker number seen
     let inputText = '';
-    let referenceText = '';
     let audioUrl: string | null = null;
     let isProcessing = false;
     let selectedEffect = '';
@@ -20,30 +29,130 @@
     let speedFactor = 0.9;    // Default middle value
     let showAdvancedSettings = false;
 
+    let generationProgress = 0;
+    let progressInterval: number;
+
     const soundEffects = [
-        'laughs', 'clears throat', 'sighs', 'gasps', 'coughs',
-        'singing', 'sings', 'mumbles', 'beep', 'groans',
-        'sniffs', 'claps', 'screams', 'inhales', 'exhales',
-        'applause', 'burps', 'humming', 'sneezes', 'chuckle',
+        'applause',
+        'beep',
+        'burps',
+        'chuckle',
+        'claps',
+        'clears throat',
+        'coughs',
+        'exhales',
+        'gasps',
+        'groans',
+        'humming',
+        'inhales',
+        'laughs',
+        'mumbles',
+        'screams',
+        'sighs',
+        'sings',
+        'singing',
+        'sneezes',
+        'sniffs',
         'whistles'
     ];
+
+    function updateAvailableSpeakers() {
+        if (messages.length === 0) {
+            // First message
+            availableSpeakers = ['[S1]'];
+            selectedSpeaker = '[S1]';
+            maxSpeakerNumber = 1;
+            return;
+        }
+
+        const lastMessage = messages[messages.length - 1];
+        const lastSpeaker = lastMessage.speaker;
+
+        if (messages.length === 1 && lastSpeaker === '[S1]') {
+            // After first S1 message
+            availableSpeakers = ['[S1]', '[S2]'];
+            maxSpeakerNumber = 2;
+            selectedSpeaker = availableSpeakers[0];
+            return;
+        }
+
+        if (messages.length === 2 && messages[0].speaker === '[S1]') {
+            if (lastSpeaker === '[S1]') {
+                // S1 -> S1 pattern
+                availableSpeakers = ['[S1]', '[S2]'];
+                maxSpeakerNumber = 2;
+            } else if (lastSpeaker === '[S2]') {
+                // S1 -> S2 pattern
+                availableSpeakers = ['[S1]', '[S2]', '[S3]'];
+                maxSpeakerNumber = 3;
+            }
+            selectedSpeaker = availableSpeakers[0];
+            return;
+        }
+
+        // For all subsequent messages, maintain the highest speaker number seen
+        const lastSpeakerNum = parseInt(lastSpeaker.match(/\d+/)[0]);
+        
+        if (lastSpeaker === '[S2]' && maxSpeakerNumber < 3) {
+            maxSpeakerNumber = 3;  // Introduce S3
+        } else if (lastSpeaker === '[S3]' && maxSpeakerNumber < 4) {
+            maxSpeakerNumber = 4;  // Introduce S4
+        }
+
+        // Create array of all speakers up to maxSpeakerNumber
+        availableSpeakers = Array.from(
+            { length: maxSpeakerNumber }, 
+            (_, i) => `[S${i + 1}]`
+        );
+        
+        selectedSpeaker = availableSpeakers[0];
+    }
+
+    function addMessage() {
+        if (currentInput.trim()) {
+            messages = [...messages, { speaker: selectedSpeaker, text: currentInput.trim() }];
+            currentInput = '';
+            updateAvailableSpeakers();
+        }
+    }
+
+    function handleKeyPress(event: KeyboardEvent) {
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            addMessage();
+        }
+    }
 
     function insertSoundEffect() {
         if (selectedEffect) {
             const effect = `(${selectedEffect})`;
-            inputText = inputText + (inputText.endsWith(' ') ? '' : ' ') + effect + ' ';
+            currentInput = currentInput + (currentInput.endsWith(' ') ? '' : ' ') + effect + ' ';
             selectedEffect = '';
         }
     }
 
     async function handleGenerate() {
+        if (messages.length === 0) return;
+        
         isProcessing = true;
+        generationProgress = 0;
         error = null;
         
         try {
+            // Start progress simulation
+            progressInterval = setInterval(() => {
+                if (generationProgress < 90) {
+                    generationProgress += Math.random() * 15;
+                    if (generationProgress > 90) generationProgress = 90;
+                }
+            }, 300);
+
+            // Combine all messages into a single text, maintaining speaker labels
+            const combinedText = messages.map(msg => `${msg.speaker}: ${msg.text}`).join('\n');
+            
             // First, prepare the form data
             const formData = new FormData();
-            formData.append('text', inputText);
+            formData.append('text', combinedText);
             
             // Add all generation parameters
             formData.append('max_new_tokens', maxNewTokens.toString());
@@ -52,11 +161,6 @@
             formData.append('top_p', topP.toString());
             formData.append('cfg_filter_top_k', cfgFilterTopK.toString());
             formData.append('speed_factor', speedFactor.toString());
-            
-            // Add reference text if available
-            if (referenceText) {
-                formData.append('reference_text', referenceText);
-            }
             
             // Add audio file if available (either uploaded or recorded)
             if (uploadedAudioUrl) {
@@ -84,6 +188,9 @@
                 throw new Error('Generated audio is empty');
             }
 
+            // Set progress to 100% when generation is complete
+            generationProgress = 100;
+            
             if (audioUrl) {
                 URL.revokeObjectURL(audioUrl);
             }
@@ -103,7 +210,11 @@
                 audioUrl = null;
             }
         } finally {
-            isProcessing = false;
+            clearInterval(progressInterval);
+            setTimeout(() => {
+                isProcessing = false;
+                generationProgress = 0;
+            }, 500); // Keep 100% visible briefly
         }
     }
 
@@ -169,216 +280,284 @@
     <section class="converter-section">
         <div class="main-input-container">
             <div class="text-input-section">
-                <label for="text-input">Enter your text (required)</label>
-                <textarea
-                    id="text-input"
-                    bind:value={inputText}
-                    placeholder="Type or paste your text here..."
-                    rows="6"
-                ></textarea>
-
-                <div class="sound-effects">
-                    <label for="effect-select">Add Sound Effect</label>
-                    <div class="effect-controls">
-                        <select
-                            id="effect-select"
-                            bind:value={selectedEffect}
-                            class="effect-select"
-                        >
-                            <option value="">Select a sound effect...</option>
-                            {#each soundEffects as effect}
-                                <option value={effect}>{effect}</option>
-                            {/each}
-                        </select>
-                        <button
-                            class="insert-button"
-                            on:click={insertSoundEffect}
-                            disabled={!selectedEffect}
-                        >
-                            Insert
-                        </button>
+                <div class="text-input-frame">
+                    <div class="frame-header">
+                        <h3>Chat Interface</h3>
+                        <p class="helper-text">Type messages for different speakers to generate conversation</p>
+                    </div>
+                    <div class="message-area">
+                        {#each messages as message}
+                            <div class="message">
+                                <span class="speaker-label" data-speaker={message.speaker}>{message.speaker}</span>
+                                <p class="message-text">{message.text}</p>
+                            </div>
+                        {/each}
+                    </div>
+                    <div class="input-area">
+                        <div class="input-container">
+                            <select 
+                                bind:value={selectedSpeaker}
+                                class="speaker-select"
+                            >
+                                {#each availableSpeakers as speaker}
+                                    <option value={speaker}>{speaker}</option>
+                                {/each}
+                            </select>
+                            <textarea
+                                bind:value={currentInput}
+                                placeholder="Type your message..."
+                                rows="1"
+                                on:keydown={handleKeyPress}
+                            ></textarea>
+                            <button 
+                                class="send-button"
+                                on:click={addMessage}
+                                disabled={!currentInput.trim()}
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="effect-controls">
+                            <select
+                                id="effect-select"
+                                bind:value={selectedEffect}
+                                class="effect-select"
+                                on:change={insertSoundEffect}
+                            >
+                                <option value="">Add sound effect...</option>
+                                {#each soundEffects as effect}
+                                    <option value={effect}>{effect}</option>
+                                {/each}
+                            </select>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <div class="audio-input-section">
-                <h3>Reference Audio (optional)</h3>
-                <p class="helper-text">Upload or record a reference voice to influence the output style</p>
-                
-                <div class="reference-text">
-                    <label for="reference-text">Reference Text (required if using reference audio)</label>
-                    <textarea
-                        id="reference-text"
-                        bind:value={referenceText}
-                        placeholder="Enter the exact transcript of your reference audio..."
-                        rows="3"
-                    ></textarea>
-                </div>
+                <div class="audio-input-section">
+                    <h3>Reference Audio (optional)</h3>
+                    <div class="audio-controls">
+                        <div class="audio-button-group">
+                            <label class="audio-button" for="audio-file" title="Upload Audio">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                    <polyline points="17 8 12 3 7 8"/>
+                                    <line x1="12" y1="3" x2="12" y2="15"/>
+                                </svg>
+                                <input
+                                    type="file"
+                                    id="audio-file"
+                                    accept="audio/mp3,audio/mpeg"
+                                    on:change={handleFileUpload}
+                                    class="hidden-input"
+                                />
+                            </label>
 
-                <div class="audio-upload">
-                    <label for="audio-file">Upload MP3 File</label>
-                    <input
-                        type="file"
-                        id="audio-file"
-                        accept="audio/mp3,audio/mpeg"
-                        on:change={handleFileUpload}
-                    />
-                    {#if uploadedAudioUrl}
-                        <audio controls src={uploadedAudioUrl}>
-                            Your browser does not support the audio element.
-                        </audio>
-                    {/if}
-                </div>
+                            {#if isRecording}
+                                <button 
+                                    class="audio-button recording"
+                                    on:click={stopRecording}
+                                    title="Stop Recording"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <rect x="6" y="6" width="12" height="12" rx="2"/>
+                                    </svg>
+                                </button>
+                            {:else}
+                                <button 
+                                    class="audio-button"
+                                    on:click={startRecording}
+                                    title="Start Recording"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+                                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                                        <line x1="12" y1="19" x2="12" y2="22"/>
+                                    </svg>
+                                </button>
+                            {/if}
+                        </div>
 
-                <div class="audio-record">
-                    <label for="record-audio">Record Reference Audio</label>
-                    <div class="record-controls">
-                        {#if isRecording}
-                            <button 
-                                id="record-audio"
-                                class="stop-button" 
-                                on:click={stopRecording}
-                            >
-                                Stop Recording
-                            </button>
-                        {:else}
-                            <button 
-                                id="record-audio"
-                                class="record-button" 
-                                on:click={startRecording}
-                            >
-                                Start Recording
-                            </button>
+                        {#if uploadedAudioUrl || recordedAudioUrl}
+                            <div class="audio-preview">
+                                <audio controls src={uploadedAudioUrl || recordedAudioUrl}>
+                                    Your browser does not support the audio element.
+                                </audio>
+                            </div>
                         {/if}
                     </div>
-                    {#if recordedAudioUrl}
-                        <audio controls src={recordedAudioUrl}>
-                            Your browser does not support the audio element.
-                        </audio>
-                    {/if}
                 </div>
             </div>
-        </div>
 
-        <div class="generation-settings">
-            <button 
-                class="settings-toggle"
-                on:click={() => showAdvancedSettings = !showAdvancedSettings}
-            >
-                {showAdvancedSettings ? 'Hide' : 'Show'} Advanced Settings
-            </button>
+            <div class="side-controls">
+                <div class="generation-settings">
+                    <h3>Generation Settings</h3>
+                    <div class="settings-panel">
+                        <div class="parameter-control">
+                            <label for="max-tokens">
+                                Max New Tokens ({maxNewTokens})
+                                <div class="tooltip-container">
+                                    <div class="tooltip-trigger" on:mouseenter={(e) => {
+                                        const tooltip = e.currentTarget.nextElementSibling;
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        tooltip.style.top = (rect.top - tooltip.offsetHeight - 10) + 'px';
+                                        tooltip.style.left = (rect.left + (rect.width / 2) - (tooltip.offsetWidth / 2)) + 'px';
+                                    }}>?</div>
+                                    <div class="tooltip">Controls the maximum length of generated audio. Higher values allow for longer audio.</div>
+                                </div>
+                            </label>
+                            <input 
+                                type="range" 
+                                id="max-tokens"
+                                bind:value={maxNewTokens}
+                                min="860"
+                                max="3072"
+                                step="1"
+                            />
+                        </div>
 
-            {#if showAdvancedSettings}
-                <div class="settings-panel">
-                    <div class="parameter-control">
-                        <label for="max-tokens">
-                            Max New Tokens ({maxNewTokens})
-                            <span class="tooltip">Controls the maximum length of generated audio. Higher values allow for longer audio.</span>
-                        </label>
-                        <input 
-                            type="range" 
-                            id="max-tokens"
-                            bind:value={maxNewTokens}
-                            min="860"
-                            max="3072"
-                            step="1"
-                        />
-                    </div>
+                        <div class="parameter-control">
+                            <label for="cfg-scale">
+                                CFG Scale ({cfgScale})
+                                <div class="tooltip-container">
+                                    <div class="tooltip-trigger" on:mouseenter={(e) => {
+                                        const tooltip = e.currentTarget.nextElementSibling;
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        tooltip.style.top = (rect.top - tooltip.offsetHeight - 10) + 'px';
+                                        tooltip.style.left = (rect.left + (rect.width / 2) - (tooltip.offsetWidth / 2)) + 'px';
+                                    }}>?</div>
+                                    <div class="tooltip">Controls how closely to follow the prompt. Higher values produce more faithful but potentially less natural output.</div>
+                                </div>
+                            </label>
+                            <input 
+                                type="range" 
+                                id="cfg-scale"
+                                bind:value={cfgScale}
+                                min="1"
+                                max="5"
+                                step="0.1"
+                            />
+                        </div>
 
-                    <div class="parameter-control">
-                        <label for="cfg-scale">
-                            CFG Scale ({cfgScale})
-                            <span class="tooltip">Controls how closely to follow the prompt. Higher values produce more faithful but potentially less natural output.</span>
-                        </label>
-                        <input 
-                            type="range" 
-                            id="cfg-scale"
-                            bind:value={cfgScale}
-                            min="1"
-                            max="5"
-                            step="0.1"
-                        />
-                    </div>
+                        <div class="parameter-control">
+                            <label for="temperature">
+                                Temperature ({temperature})
+                                <div class="tooltip-container">
+                                    <div class="tooltip-trigger" on:mouseenter={(e) => {
+                                        const tooltip = e.currentTarget.nextElementSibling;
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        tooltip.style.top = (rect.top - tooltip.offsetHeight - 10) + 'px';
+                                        tooltip.style.left = (rect.left + (rect.width / 2) - (tooltip.offsetWidth / 2)) + 'px';
+                                    }}>?</div>
+                                    <div class="tooltip">Controls randomness in generation. Higher values produce more varied but potentially less consistent output.</div>
+                                </div>
+                            </label>
+                            <input 
+                                type="range" 
+                                id="temperature"
+                                bind:value={temperature}
+                                min="1"
+                                max="1.5"
+                                step="0.1"
+                            />
+                        </div>
 
-                    <div class="parameter-control">
-                        <label for="temperature">
-                            Temperature ({temperature})
-                            <span class="tooltip">Controls randomness in generation. Higher values produce more varied but potentially less consistent output.</span>
-                        </label>
-                        <input 
-                            type="range" 
-                            id="temperature"
-                            bind:value={temperature}
-                            min="1"
-                            max="1.5"
-                            step="0.1"
-                        />
-                    </div>
+                        <div class="parameter-control">
+                            <label for="top-p">
+                                Top P ({topP})
+                                <div class="tooltip-container">
+                                    <div class="tooltip-trigger" on:mouseenter={(e) => {
+                                        const tooltip = e.currentTarget.nextElementSibling;
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        tooltip.style.top = (rect.top - tooltip.offsetHeight - 10) + 'px';
+                                        tooltip.style.left = (rect.left + (rect.width / 2) - (tooltip.offsetWidth / 2)) + 'px';
+                                    }}>?</div>
+                                    <div class="tooltip">Controls diversity in sampling. Higher values allow for more diverse outputs.</div>
+                                </div>
+                            </label>
+                            <input 
+                                type="range" 
+                                id="top-p"
+                                bind:value={topP}
+                                min="0.8"
+                                max="1"
+                                step="0.01"
+                            />
+                        </div>
 
-                    <div class="parameter-control">
-                        <label for="top-p">
-                            Top P ({topP})
-                            <span class="tooltip">Controls diversity in sampling. Higher values allow for more diverse outputs.</span>
-                        </label>
-                        <input 
-                            type="range" 
-                            id="top-p"
-                            bind:value={topP}
-                            min="0.8"
-                            max="1"
-                            step="0.01"
-                        />
-                    </div>
+                        <div class="parameter-control">
+                            <label for="cfg-filter-top-k">
+                                CFG Filter Top K ({cfgFilterTopK})
+                                <div class="tooltip-container">
+                                    <div class="tooltip-trigger" on:mouseenter={(e) => {
+                                        const tooltip = e.currentTarget.nextElementSibling;
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        tooltip.style.top = (rect.top - tooltip.offsetHeight - 10) + 'px';
+                                        tooltip.style.left = (rect.left + (rect.width / 2) - (tooltip.offsetWidth / 2)) + 'px';
+                                    }}>?</div>
+                                    <div class="tooltip">Controls the number of top tokens to consider during generation. Higher values allow for more variety.</div>
+                                </div>
+                            </label>
+                            <input 
+                                type="range" 
+                                id="cfg-filter-top-k"
+                                bind:value={cfgFilterTopK}
+                                min="15"
+                                max="50"
+                                step="1"
+                            />
+                        </div>
 
-                    <div class="parameter-control">
-                        <label for="cfg-filter-top-k">
-                            CFG Filter Top K ({cfgFilterTopK})
-                            <span class="tooltip">Controls the number of top tokens to consider during generation. Higher values allow for more variety.</span>
-                        </label>
-                        <input 
-                            type="range" 
-                            id="cfg-filter-top-k"
-                            bind:value={cfgFilterTopK}
-                            min="15"
-                            max="50"
-                            step="1"
-                        />
-                    </div>
-
-                    <div class="parameter-control">
-                        <label for="speed-factor">
-                            Speed Factor ({speedFactor})
-                            <span class="tooltip">Controls the speed of generated speech. Higher values produce faster speech.</span>
-                        </label>
-                        <input 
-                            type="range" 
-                            id="speed-factor"
-                            bind:value={speedFactor}
-                            min="0.8"
-                            max="1"
-                            step="0.01"
-                        />
+                        <div class="parameter-control">
+                            <label for="speed-factor">
+                                Speed Factor ({speedFactor})
+                                <div class="tooltip-container">
+                                    <div class="tooltip-trigger" on:mouseenter={(e) => {
+                                        const tooltip = e.currentTarget.nextElementSibling;
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        tooltip.style.top = (rect.top - tooltip.offsetHeight - 10) + 'px';
+                                        tooltip.style.left = (rect.left + (rect.width / 2) - (tooltip.offsetWidth / 2)) + 'px';
+                                    }}>?</div>
+                                    <div class="tooltip">Controls the speed of generated speech. Higher values produce faster speech.</div>
+                                </div>
+                            </label>
+                            <input 
+                                type="range" 
+                                id="speed-factor"
+                                bind:value={speedFactor}
+                                min="0.8"
+                                max="1"
+                                step="0.01"
+                            />
+                        </div>
                     </div>
                 </div>
-            {/if}
+            </div>
         </div>
 
         <div class="controls">
             <button
                 class="generate-button"
+                class:processing={isProcessing}
                 on:click={handleGenerate}
-                disabled={!inputText || isProcessing}
+                disabled={!messages.length || isProcessing}
             >
+                <span class="button-text">
+                    {#if isProcessing}
+                        Generating... {Math.round(generationProgress)}%
+                    {:else}
+                        Generate Audio
+                    {/if}
+                </span>
                 {#if isProcessing}
-                    Generating...
-                {:else}
-                    Generate Audio
+                    <div class="progress-bar" style="width: {generationProgress}%"></div>
                 {/if}
             </button>
         </div>
 
         <div class="output-container">
-            <h2>Generated Audio</h2>
             <div class="output-audio">
                 {#if error}
                     <p class="error-message">{error}</p>
@@ -395,140 +574,370 @@
 </main>
 
 <style>
+    :global(body) {
+        background-color: white;
+        color: #333;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
     .container {
-        max-width: 1200px;
+        max-width: 1400px;
         margin: 0 auto;
-        padding: 2rem;
+        padding: 2.5rem;
     }
 
     header {
         text-align: center;
-        margin-bottom: 3rem;
+        margin-bottom: 3.5rem;
     }
 
     h1 {
-        font-size: 2.5rem;
-        color: #2c3e50;
+        font-size: 2.2rem;
+        color: #333;
         margin-bottom: 0.5rem;
+        font-weight: 600;
     }
 
     .subtitle {
-        font-size: 1.2rem;
+        font-size: 1.1rem;
         color: #666;
     }
 
     .converter-section {
         background: white;
-        border-radius: 12px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        border-radius: 20px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
         padding: 2rem;
     }
 
     .main-input-container {
         display: grid;
-        grid-template-columns: 3fr 2fr;
+        grid-template-columns: minmax(300px, 2fr) minmax(250px, 1fr);
         gap: 2rem;
         margin-bottom: 2rem;
+        align-items: start;
     }
 
     .text-input-section {
         display: flex;
         flex-direction: column;
-        gap: 1.5rem;
+        gap: 0.5rem;
     }
 
-    .audio-input-section {
-        background: #f8fafc;
-        border-radius: 12px;
-        padding: 1.5rem;
-        border: 2px dashed #e2e8f0;
+    .text-input-frame {
+        background: #fcfcfc;
+        border-radius: 16px;
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        min-height: 260px;
+        border: 1px solid #e5e7eb;
     }
 
-    .audio-input-section h3 {
-        margin: 0;
-        color: #2d3748;
-        font-size: 1.2rem;
+    .frame-header {
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid #eee;
+        margin-bottom: 0.35rem;
+    }
+
+    .frame-header h3 {
+        font-size: 0.9rem;
+        margin: 0 0 0.35rem 0;
     }
 
     .helper-text {
-        color: #718096;
-        font-size: 0.9rem;
-        margin: 0.5rem 0 1.5rem 0;
+        font-size: 0.8rem;
     }
 
-    .audio-upload, .audio-record {
-        background: white;
+    .message-area {
+        flex: 1;
+        min-height: 150px;
+        max-height: 150px;
+        overflow-y: auto;
+        padding: 0.35rem 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+    }
+
+    .message {
+        display: flex;
+        gap: 0.4rem;
+        align-items: flex-start;
+        animation: fadeIn 0.3s ease;
+        padding: 0.25rem;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .speaker-label {
+        padding: 0.4rem 0.6rem;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        white-space: nowrap;
+        color: white;
+    }
+
+    /* Speaker colors */
+    .speaker-label[data-speaker="[S1]"] {
+        background: #6366f1; /* Indigo */
+    }
+
+    .speaker-label[data-speaker="[S2]"] {
+        background: #ec4899; /* Pink */
+    }
+
+    .speaker-label[data-speaker="[S3]"] {
+        background: #14b8a6; /* Teal */
+    }
+
+    .speaker-label[data-speaker="[S4]"] {
+        background: #f59e0b; /* Amber */
+    }
+
+    /* Dropdown colors matching speakers */
+    .speaker-select option[value="[S1]"] {
+        color: #6366f1;
+    }
+
+    .speaker-select option[value="[S2]"] {
+        color: #ec4899;
+    }
+
+    .speaker-select option[value="[S3]"] {
+        color: #14b8a6;
+    }
+
+    .speaker-select option[value="[S4]"] {
+        color: #f59e0b;
+    }
+
+    .message-text {
+        margin: 0;
+        padding: 0.35rem 0.5rem;
+        background: #f5f5f5;
         border-radius: 8px;
-        padding: 1.2rem;
-        margin-bottom: 1rem;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        font-size: 0.9rem;
+        line-height: 1.3;
+        flex: 1;
     }
 
-    label {
-        display: block;
-        font-size: 1.1rem;
-        color: #2c3e50;
-        margin-bottom: 0.5rem;
+    .input-area {
+        margin-top: auto;
+        padding-top: 0.5rem;
+        border-top: 1px solid #eee;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .input-container {
+        display: flex;
+        gap: 0.5rem;
+        align-items: flex-end;
+        background: white;
+        border: 1px solid #eee;
+        border-radius: 12px;
+        padding: 0.5rem;
+    }
+
+    .speaker-select {
+        width: 70px;
+        padding: 0.4rem;
+        border: none;
+        background: #f5f5f5;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        color: #666;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        appearance: none;
+        background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23666%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
+        background-repeat: no-repeat;
+        background-position: right 0.5rem center;
+        background-size: 0.65em auto;
+        padding-right: 1.5rem;
+    }
+
+    .speaker-select:hover {
+        background-color: #efefef;
+        color: #333;
     }
 
     textarea {
-        width: 100%;
-        padding: 1rem;
-        border: 2px solid #e2e8f0;
+        flex: 1;
+        padding: 0.5rem;
+        border: none;
         border-radius: 8px;
-        font-size: 1rem;
-        resize: vertical;
-        transition: border-color 0.2s;
+        font-size: 0.95rem;
+        resize: none;
+        transition: all 0.2s ease;
+        background: transparent;
+        min-height: 20px;
+        max-height: 120px;
+        line-height: 1.4;
     }
 
     textarea:focus {
         outline: none;
-        border-color: #4299e1;
+        background: transparent;
     }
 
-    .controls {
-        display: flex;
-        justify-content: center;
-        margin: 2rem 0;
-    }
-
-    .generate-button {
-        background-color: #4299e1;
+    .send-button {
+        background: #333;
         color: white;
-        padding: 0.8rem 2rem;
         border: none;
         border-radius: 8px;
-        font-size: 1.1rem;
+        padding: 0.5rem;
         cursor: pointer;
-        transition: background-color 0.2s;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 
-    .generate-button:hover:not(:disabled) {
-        background-color: #3182ce;
+    .send-button:hover:not(:disabled) {
+        background: #222;
+        transform: translateY(-1px);
     }
 
-    .generate-button:disabled {
-        background-color: #a0aec0;
+    .send-button:disabled {
+        background: #ddd;
         cursor: not-allowed;
     }
 
-    .output-container {
-        margin-top: 2rem;
-        padding-top: 2rem;
-        border-top: 2px solid #e2e8f0;
+    .audio-input-section {
+        background: #fcfcfc;
+        border-radius: 16px;
+        padding: 1rem;
     }
 
-    h2 {
-        font-size: 1.5rem;
-        color: #2c3e50;
-        margin-bottom: 1rem;
+    .audio-input-section h3 {
+        font-size: 0.9rem;
+        margin: 0 0 0.75rem 0;
+        font-weight: 500;
+    }
+
+    .audio-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .audio-button-group {
+        display: flex;
+        gap: 2.5rem;
+        justify-content: center;
+        margin-left: 2rem;
+    }
+
+    .audio-button {
+        width: 130px;
+        height: 38px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: white;
+        border: 1px solid #eee;
+        border-radius: 8px;
+        color: #666;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .audio-button:hover {
+        background: #f5f5f5;
+        color: #333;
+    }
+
+    .audio-button.recording {
+        background: #fee2e2;
+        border-color: #fecaca;
+        color: #dc2626;
+    }
+
+    .hidden-input {
+        display: none;
+    }
+
+    .audio-preview {
+        background: white;
+        border: 1px solid #eee;
+        border-radius: 8px;
+        padding: 0.25rem;
+    }
+
+    .audio-preview audio {
+        width: 100%;
+        height: 36px;
+        margin: 0;
+    }
+
+    .controls {
+        padding: 0 0 2rem 0;
+    }
+
+    .generate-button {
+        background: #333;
+        color: white;
+        padding: 1.25rem;
+        border: none;
+        border-radius: 12px;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        width: 100%;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .generate-button:hover:not(:disabled) {
+        background: #222;
+        transform: translateY(-1px);
+    }
+
+    .generate-button:disabled:not(.processing) {
+        background: #ddd;
+        cursor: not-allowed;
+    }
+
+    .generate-button.processing {
+        cursor: wait;
+    }
+
+    .progress-bar {
+        position: absolute;
+        left: 0;
+        top: 0;
+        height: 100%;
+        background: #222;
+        transition: width 0.3s ease;
+        z-index: 1;
+    }
+
+    .button-text {
+        position: relative;
+        z-index: 2;
+    }
+
+    .output-container {
+        padding: 0;
     }
 
     .output-audio {
-        background: #f7fafc;
-        border-radius: 8px;
-        padding: 2rem;
-        min-height: 100px;
+        background: #fcfcfc;
+        border-radius: 16px;
+        padding: 1rem;
+        min-height: 60px;
         display: flex;
         justify-content: center;
         align-items: center;
@@ -537,199 +946,217 @@
     audio {
         width: 100%;
         max-width: 500px;
+        height: 36px;
     }
 
     .error-message {
-        color: #dc3545;
+        color: #e53e3e;
         font-weight: 500;
+        margin: 0;
+        font-size: 0.9rem;
     }
 
     .placeholder-text {
-        color: #718096;
-        font-style: italic;
+        color: #666;
+        margin: 0;
+        font-size: 0.9rem;
     }
 
-    .sound-effects {
-        margin-bottom: 2rem;
+    .sound-effects-section {
+        display: none;
     }
 
     .effect-controls {
         display: flex;
-        gap: 1rem;
-        margin-top: 0.5rem;
+        padding: 0;
     }
 
     .effect-select {
-        flex: 1;
-        padding: 0.8rem;
-        border: 2px solid #e2e8f0;
-        border-radius: 8px;
-        font-size: 1rem;
-        background-color: white;
+        width: 100%;
+        padding: 0.4rem;
+        border: none;
+        background: #f5f5f5;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        color: #666;
         cursor: pointer;
-        transition: border-color 0.2s;
+        transition: all 0.2s ease;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        appearance: none;
+        background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23666%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
+        background-repeat: no-repeat;
+        background-position: right 0.5rem center;
+        background-size: 0.65em auto;
+        padding-right: 1.5rem;
+    }
+
+    .effect-select:hover {
+        background-color: #efefef;
+        color: #333;
     }
 
     .effect-select:focus {
         outline: none;
-        border-color: #4299e1;
+        border-color: #333;
+        color: #333;
     }
 
-    .insert-button {
-        padding: 0.8rem 1.5rem;
-        background-color: #48bb78;
-        color: white;
-        border: none;
-        border-radius: 8px;
-        font-size: 1rem;
-        cursor: pointer;
-        transition: background-color 0.2s;
-    }
-
-    .insert-button:hover:not(:disabled) {
-        background-color: #38a169;
-    }
-
-    .insert-button:disabled {
-        background-color: #a0aec0;
-        cursor: not-allowed;
-    }
-
-    .reference-text {
-        margin-bottom: 1.5rem;
-        background: white;
-        border-radius: 8px;
-        padding: 1.2rem;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-    }
-
-    .reference-text textarea {
-        width: 100%;
-        padding: 0.8rem;
-        border: 2px solid #e2e8f0;
-        border-radius: 8px;
-        font-size: 0.9rem;
-        resize: vertical;
-        transition: border-color 0.2s;
-    }
-
-    .reference-text textarea:focus {
-        outline: none;
-        border-color: #4299e1;
+    .effect-button {
+        display: none;
     }
 
     .generation-settings {
-        margin: 2rem 0;
+        background: #fcfcfc;
+        border-radius: 16px;
         padding: 1rem;
-        background: #f8fafc;
-        border-radius: 12px;
-        border: 2px dashed #e2e8f0;
-    }
-
-    .settings-toggle {
-        background: #4299e1;
-        color: white;
-        padding: 0.5rem 1rem;
-        border: none;
-        border-radius: 6px;
-        cursor: pointer;
-        font-size: 0.9rem;
-        transition: background-color 0.2s;
-    }
-
-    .settings-toggle:hover {
-        background: #3182ce;
+        position: sticky;
+        top: 2rem;
+        height: calc(260px + 0.5rem + 180px); /* Increased audio section height estimate further */
+        display: flex;
+        flex-direction: column;
     }
 
     .settings-panel {
-        margin-top: 1rem;
-        padding: 1rem;
-        background: white;
-        border-radius: 8px;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        flex: 1;
+        padding-right: 0.25rem;
+        overflow: visible;
+        position: relative;
     }
 
     .parameter-control {
-        margin-bottom: 1.5rem;
-    }
-
-    .parameter-control:last-child {
         margin-bottom: 0;
+        flex-shrink: 0;
+        padding: 0.5rem 0;
+        position: relative;
     }
 
     .parameter-control label {
-        display: block;
-        margin-bottom: 0.5rem;
-        color: #2d3748;
-        font-size: 0.9rem;
+        font-size: 0.85rem;
+        margin-bottom: 0.75rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .tooltip-container {
         position: relative;
+        display: inline-block;
+    }
+
+    .tooltip-trigger {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #eee;
+        color: #666;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.75rem;
+        cursor: help;
+        transition: all 0.2s ease;
+    }
+
+    .tooltip-trigger:hover {
+        background: #e0e0e0;
+        color: #333;
+    }
+
+    .tooltip {
+        display: none;
+        position: fixed;
+        background: #333;
+        color: white;
+        padding: 0.6rem 0.8rem;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        width: 220px;
+        z-index: 1000;
+        pointer-events: none;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    .tooltip-trigger:hover + .tooltip {
+        display: block;
+    }
+
+    .generation-settings h3 {
+        font-size: 0.9rem;
+        margin: 0 0 1.5rem 0;
+        font-weight: 500;
     }
 
     .parameter-control input[type="range"] {
         width: 100%;
-        height: 6px;
-        background: #e2e8f0;
-        border-radius: 3px;
+        height: 2px;
+        background: #eee;
+        border-radius: 1px;
         outline: none;
         -webkit-appearance: none;
     }
 
     .parameter-control input[type="range"]::-webkit-slider-thumb {
         -webkit-appearance: none;
-        width: 18px;
-        height: 18px;
-        background: #4299e1;
+        width: 14px;
+        height: 14px;
+        background: #333;
         border-radius: 50%;
         cursor: pointer;
-        transition: background-color 0.2s;
+        transition: all 0.2s ease;
     }
 
     .parameter-control input[type="range"]::-webkit-slider-thumb:hover {
-        background: #3182ce;
+        transform: scale(1.2);
     }
 
-    .tooltip {
-        display: none;
-        position: absolute;
-        background: #2d3748;
-        color: white;
-        padding: 0.5rem;
-        border-radius: 4px;
-        font-size: 0.8rem;
-        width: 200px;
-        top: -30px;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 1;
+    .side-controls {
+        display: flex;
+        flex-direction: column;
     }
 
-    .parameter-control label:hover .tooltip {
-        display: block;
+    @media (max-width: 1200px) {
+        .main-input-container {
+            grid-template-columns: minmax(300px, 1.5fr) minmax(250px, 1fr);
+            gap: 2rem;
+        }
     }
 
-    @media (max-width: 768px) {
+    @media (max-width: 900px) {
         .container {
-            padding: 1rem;
+            padding: 1.5rem;
         }
-
-        h1 {
-            font-size: 2rem;
-        }
-
+        
         .converter-section {
-            padding: 1rem;
+            padding: 1.5rem;
         }
 
         .main-input-container {
             grid-template-columns: 1fr;
+            gap: 1.5rem;
         }
 
-        .audio-input-section {
-            margin-top: 1rem;
+        .text-input-section,
+        .side-controls {
+            position: static;
+            width: auto;
+            grid-column: 1;
+            justify-self: stretch;
         }
+    }
 
-        .tooltip {
-            display: none !important;
+    @media (max-height: 900px) {
+        .message-area {
+            max-height: 150px;
+        }
+    }
+
+    @media (max-height: 700px) {
+        .message-area {
+            max-height: 150px;
         }
     }
 </style> 
