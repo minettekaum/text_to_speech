@@ -1,29 +1,27 @@
-from typing import Union
+from typing import Union, Optional, Tuple
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+
+import time
 from pydantic import BaseModel
 import uuid
-import time
+
 import soundfile as sf
 import numpy as np
 from dia.model import Dia
 import logging
 import torch
 
+import argparse
+import tempfile
+import sys
+import uvicorn
+
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
-
-# Initialize model
-try:
-    logger.info("Initializing Dia model...")
-    model = Dia.from_pretrained("nari-labs/Dia-1.6B")
-    logger.info("Successfully initialized Dia model")
-except Exception as e:
-    logger.error(f"Error initializing model: {str(e)}")
-    raise
 
 app = FastAPI()
 
@@ -42,179 +40,185 @@ AUDIO_DIR.mkdir(exist_ok=True)
 UPLOADS_DIR = Path("upload_files")
 UPLOADS_DIR.mkdir(exist_ok=True)
 
-class TextToSpeechRequest(BaseModel):
-    text: str
+# Initialize device
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+else:
+    device = torch.device("cpu")
 
-async def process_audio_file(file: UploadFile) -> np.ndarray:
-    # Save uploaded file temporarily
-    temp_path = UPLOADS_DIR / f"{uuid.uuid4()}.mp3"
-    try:
-        # Log file details
-        logger.debug(f"Processing audio file: {file.filename}")
-        logger.debug(f"Content type: {file.content_type}")
-        
-        # Read the content before opening the file
-        content = await file.read()
-        logger.debug(f"Read content size: {len(content)} bytes")
-        
-        # Ensure the directory exists
-        UPLOADS_DIR.mkdir(exist_ok=True)
-        logger.debug(f"Upload directory: {UPLOADS_DIR}")
-        
-        # Write the content to the file
-        temp_path.write_bytes(content)
-        logger.debug(f"Written to temporary file: {temp_path}")
-        
-        # Ensure the file exists before reading
-        if not temp_path.exists():
-            raise HTTPException(status_code=500, detail="Failed to save uploaded file")
-        
-        file_size = temp_path.stat().st_size
-        logger.debug(f"Temporary file size: {file_size} bytes")
-            
+logger.info(f"Using device: {device}")
+
+# Load Nari model and config
+logger.info("Loading Nari model...")
+try:
+    dtype_map = {
+        "cpu": "float32",
+        "cuda": "float16",  # NVIDIA – better with float16
+    }
+
+    dtype = dtype_map.get(device.type, "float16")
+    logger.info(f"Using device: {device}, attempting to load model with {dtype}")
+    model = Dia.from_pretrained("nari-labs/Dia-1.6B", compute_dtype=dtype, device=device)
+except Exception as e:
+    logger.error(f"Error loading Nari model: {e}")
+    raise
+
+async def process_audio_file(file: UploadFile) -> Tuple[np.ndarray, int]:
+    """Process uploaded audio file and return preprocessed audio data and sample rate."""
+    with tempfile.NamedTemporaryFile(mode="wb", suffix=".wav", delete=False) as f_audio:
+        temp_path = Path(f_audio.name)
         try:
-            # Try to read the file first to check if it's valid
-            with open(temp_path, 'rb') as f:
-                first_bytes = f.read(4)
-                logger.debug(f"First bytes of file: {first_bytes.hex()}")
+            # Log file details
+            logger.debug(f"Processing audio file: {file.filename}")
+            content = await file.read()
+            f_audio.write(content)
             
-            # Load audio file using soundfile
-            logger.debug("Attempting to read audio file with soundfile")
-            audio_data, sample_rate = sf.read(str(temp_path))
-            logger.debug(f"Successfully read audio file. Shape: {audio_data.shape}, Sample rate: {sample_rate}")
+            # Read and preprocess audio data
+            audio_data, sr = sf.read(str(temp_path))
             
-            # Ensure audio data is valid
-            if len(audio_data.shape) == 0 or audio_data.size == 0:
-                raise ValueError("Empty audio data")
-                
-            # Convert to mono if stereo
-            if len(audio_data.shape) > 1 and audio_data.shape[1] > 1:
-                audio_data = np.mean(audio_data, axis=1)
-                logger.debug("Converted stereo to mono")
-                
-            # Ensure float32 format
-            audio_data = audio_data.astype(np.float32)
-            
-            return audio_data
-            
+            # Basic audio preprocessing for consistency
+            # Convert to float32 in [-1, 1] range if integer type
+            if np.issubdtype(audio_data.dtype, np.integer):
+                max_val = np.iinfo(audio_data.dtype).max
+                audio_data = audio_data.astype(np.float32) / max_val
+            elif not np.issubdtype(audio_data.dtype, np.floating):
+                logger.warning(f"Unsupported audio dtype {audio_data.dtype}, attempting conversion")
+                audio_data = audio_data.astype(np.float32)
+
+            # Ensure mono (average channels if stereo)
+            if audio_data.ndim > 1:
+                if audio_data.shape[0] == 2:  # Assume (2, N)
+                    audio_data = np.mean(audio_data, axis=0)
+                elif audio_data.shape[1] == 2:  # Assume (N, 2)
+                    audio_data = np.mean(audio_data, axis=1)
+                else:
+                    logger.warning(f"Audio has unexpected shape {audio_data.shape}, taking first channel/axis")
+                    audio_data = audio_data[0] if audio_data.shape[0] < audio_data.shape[1] else audio_data[:, 0]
+                audio_data = np.ascontiguousarray(audio_data)
+
+            return audio_data, sr
+
         except Exception as e:
-            logger.error(f"Error reading audio file: {str(e)}")
+            logger.error(f"Error processing audio file: {e}")
             if "Format not recognized" in str(e):
                 raise HTTPException(status_code=400, detail="Audio format not supported. Please use WAV or FLAC format.")
-            elif "Empty audio data" in str(e):
-                raise HTTPException(status_code=400, detail="Audio file appears to be empty")
-            else:
-                raise HTTPException(status_code=400, detail=f"Invalid audio file: {str(e)}")
-    except Exception as e:
-        logger.error(f"Error processing audio file: {str(e)}")
-        if isinstance(e, HTTPException):
-            raise e
-        raise HTTPException(status_code=500, detail=f"Failed to process audio: {str(e)}")
-    finally:
-        # Cleanup temporary file
-        try:
-            if temp_path.exists():
+            raise HTTPException(status_code=400, detail=f"Failed to process audio: {str(e)}")
+        finally:
+            try:
                 temp_path.unlink()
                 logger.debug("Cleaned up temporary file")
-        except Exception as e:
-            logger.error(f"Error cleaning up temporary file: {str(e)}")
+            except Exception as e:
+                logger.error(f"Error cleaning up temporary file: {e}")
 
 @app.post("/api/generate")
 async def generate_speech(
     text: str = Form(...),
-    reference_text: str = Form(None),
-    audio: UploadFile = File(None)
+    audio: UploadFile = File(None),
+    max_new_tokens: int = Form(1024),
+    cfg_scale: float = Form(3.0),
+    temperature: float = Form(1.3),
+    top_p: float = Form(0.95),
+    cfg_filter_top_k: int = Form(35),
+    speed_factor: float = Form(0.94)
 ):
+    """
+    FastAPI endpoint for text-to-speech generation with optional audio prompt.
+    Uses improved audio processing from test_model.py.
+    """
+    if not text or text.isspace():
+        raise HTTPException(status_code=400, detail="Text input cannot be empty")
+
+    # Parameter validation
+    if not (860 <= max_new_tokens <= 3072):
+        raise HTTPException(status_code=400, detail="max_new_tokens must be between 860 and 3072")
+    if not (1.0 <= temperature <= 1.5):
+        raise HTTPException(status_code=400, detail="temperature must be between 1.0 and 1.5")
+    if not (0.8 <= top_p <= 1.0):
+        raise HTTPException(status_code=400, detail="top_p must be between 0.8 and 1.0")
+    if not (1.0 <= cfg_scale <= 5.0):
+        raise HTTPException(status_code=400, detail="cfg_scale must be between 1.0 and 5.0")
+    if not (15 <= cfg_filter_top_k <= 50):
+        raise HTTPException(status_code=400, detail="cfg_filter_top_k must be between 15 and 50")
+    if not (0.8 <= speed_factor <= 1.0):
+        raise HTTPException(status_code=400, detail="speed_factor must be between 0.8 and 1.0")
+
+    output_filepath = AUDIO_DIR / f"{int(time.time())}.wav"
+    audio_prompt = None
+
     try:
-        logger.info(f"Generating speech for text: {text[:50]}...")
-        
-        # Generate a unique filename
-        filename = f"{uuid.uuid4()}.mp3"
-        filepath = AUDIO_DIR / filename
-        logger.debug(f"Output filepath: {filepath}")
+        # Process audio prompt if provided
+        if audio:
+            logger.info("Processing audio prompt")
+            audio_prompt, _ = await process_audio_file(audio)
+            logger.debug(f"Audio prompt processed successfully: {audio_prompt.shape}")
 
-        # Process reference audio if provided
-        reference_audio = None
-        if audio and reference_text:
-            logger.info("Processing reference audio")
-            try:
-                reference_audio = await process_audio_file(audio)
-                logger.debug(f"Reference audio shape: {reference_audio.shape}")
-                
-                # Combine reference text and generation text
-                full_text = reference_text + text
-                logger.debug(f"Combined text for generation: {full_text[:100]}...")
-            except Exception as e:
-                logger.error(f"Failed to process reference audio: {str(e)}")
-                if isinstance(e, HTTPException):
-                    raise e
-                raise HTTPException(status_code=400, detail=f"Failed to process reference audio: {str(e)}")
-        else:
-            full_text = text
+        # Generate audio
+        start_time = time.time()
+        with torch.inference_mode():
+            output_audio_np = model.generate(
+                text,
+                max_tokens=max_new_tokens,
+                cfg_scale=cfg_scale,
+                temperature=temperature,
+                top_p=top_p,
+                cfg_filter_top_k=cfg_filter_top_k,
+                use_torch_compile=False,
+                audio_prompt=audio_prompt,
+            )
+        logger.info(f"Generation finished in {time.time() - start_time:.2f} seconds")
 
-        # Generate audio with optional reference
-        try:
-            logger.info("Generating audio output")
-            if reference_audio is not None:
-                # Use the reference audio in the generation with specific parameters for voice cloning
-                output = model.generate(
-                    full_text,
-                    audio_prompt=reference_audio,
-                    temperature=0.0,
-                    top_p=0.5,
-                    use_cfg_filter=False,
-                    cfg_filter_top_k=100,
-                    cfg_scale=4.20
-                )
-            else:
-                # Generate without reference
-                output = model.generate(text)
-            logger.debug(f"Generated audio shape: {output.shape}")
-        except Exception as e:
-            logger.error(f"Error generating audio: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Failed to generate audio: {str(e)}")
+        if output_audio_np is None:
+            raise HTTPException(status_code=500, detail="Model generated no output")
+
+        # Process output audio
+        output_sr = 44100  # Fixed sample rate from model
+
+        # Apply speed factor
+        original_len = len(output_audio_np)
+        speed_factor = max(0.1, min(speed_factor, 5.0))  # Safety bounds
+        target_len = int(original_len / speed_factor)
         
-        # Save audio
-        try:
-            logger.info("Saving generated audio")
-            sf.write(str(filepath), output, 44100)
-            logger.debug("Audio saved successfully")
-        except Exception as e:
-            logger.error(f"Error saving generated audio: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Failed to save generated audio: {str(e)}")
+        if target_len != original_len and target_len > 0:
+            x_original = np.arange(original_len)
+            x_resampled = np.linspace(0, original_len - 1, target_len)
+            output_audio_np = np.interp(x_resampled, x_original, output_audio_np)
+            logger.debug(f"Resampled audio from {original_len} to {target_len} samples")
+
+        # Convert to int16 for WAV file
+        output_audio_np = np.clip(output_audio_np, -1.0, 1.0)
+        output_audio_np = (output_audio_np * 32767).astype(np.int16)
+
+        # Save the file
+        sf.write(str(output_filepath), output_audio_np, output_sr)
+        logger.info(f"Audio saved to {output_filepath}")
 
         return FileResponse(
-            path=str(filepath),
-            media_type="audio/mpeg",
-            filename=filename
+            path=str(output_filepath),
+            media_type="audio/wav",
+            filename=output_filepath.name
         )
 
     except Exception as e:
-        logger.error(f"Error during generation: {str(e)}")
+        logger.error(f"Error during generation: {e}")
         if isinstance(e, HTTPException):
             raise e
         raise HTTPException(status_code=500, detail=str(e))
+
     finally:
-        # Ensure cleanup happens
-        cleanup_old_files()
+        # Clean up old files
+        try:
+            for file in AUDIO_DIR.glob("*.wav"):
+                if file != output_filepath and file.stat().st_mtime < (time.time() - 3600):
+                    file.unlink()
+            for file in UPLOADS_DIR.glob("*"):
+                if file.stat().st_mtime < (time.time() - 3600):
+                    file.unlink()
+        except Exception as e:
+            logger.error(f"Error during cleanup: {e}")
 
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok", "message": "Backend is running"}
-
-# Cleanup old files periodically
-def cleanup_old_files():
-    try:
-        # Cleanup audio files
-        for file in AUDIO_DIR.glob("*.mp3"):
-            if file.stat().st_mtime < (time.time() - 3600):
-                file.unlink()
-        # Cleanup upload files
-        for file in UPLOADS_DIR.glob("*"):
-            if file.stat().st_mtime < (time.time() - 3600):
-                file.unlink()
-    except Exception as e:
-        print(f"Error during cleanup: {e}")
 
 @app.get("/")
 def read_root():
@@ -225,5 +229,20 @@ def read_item(item_id: int, q: Union[str, None] = None):
     return {"item_id": item_id, "q": q}
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # Only parse arguments when running the script directly
+    parser = argparse.ArgumentParser(description="FastAPI server for Nari TTS")
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to run the server on")
+    parser.add_argument("--port", type=int, default=8000, help="Port to run the server on")
+    parser.add_argument("--device", type=str, help="Force device (e.g., 'cuda', 'mps', 'cpu')")
+    args = parser.parse_args()
+
+    # Override device if specified
+    if args.device:
+        device = torch.device(args.device)
+        logger.info(f"Overriding device to: {device}")
+        # Reload model with new device
+        model = Dia.from_pretrained("nari-labs/Dia-1.6B", 
+                                  compute_dtype=dtype_map.get(device.type, "float16"),
+                                  device=device)
+
+    uvicorn.run(app, host=args.host, port=args.port)

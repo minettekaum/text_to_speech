@@ -11,6 +11,15 @@
     let recordedAudioUrl: string | null = null;
     let uploadedAudioUrl: string | null = null;
 
+    // Generation parameters with correct ranges
+    let maxNewTokens = 1024;  // Default middle value
+    let cfgScale = 3.0;       // Default middle value
+    let temperature = 1.2;    // Default middle value
+    let topP = 0.9;          // Default middle value
+    let cfgFilterTopK = 32;   // Default middle value
+    let speedFactor = 0.9;    // Default middle value
+    let showAdvancedSettings = false;
+
     const soundEffects = [
         'laughs', 'clears throat', 'sighs', 'gasps', 'coughs',
         'singing', 'sings', 'mumbles', 'beep', 'groans',
@@ -35,6 +44,14 @@
             // First, prepare the form data
             const formData = new FormData();
             formData.append('text', inputText);
+            
+            // Add all generation parameters
+            formData.append('max_new_tokens', maxNewTokens.toString());
+            formData.append('cfg_scale', cfgScale.toString());
+            formData.append('temperature', temperature.toString());
+            formData.append('top_p', topP.toString());
+            formData.append('cfg_filter_top_k', cfgFilterTopK.toString());
+            formData.append('speed_factor', speedFactor.toString());
             
             // Add reference text if available
             if (referenceText) {
@@ -241,6 +258,109 @@
                     {/if}
                 </div>
             </div>
+        </div>
+
+        <div class="generation-settings">
+            <button 
+                class="settings-toggle"
+                on:click={() => showAdvancedSettings = !showAdvancedSettings}
+            >
+                {showAdvancedSettings ? 'Hide' : 'Show'} Advanced Settings
+            </button>
+
+            {#if showAdvancedSettings}
+                <div class="settings-panel">
+                    <div class="parameter-control">
+                        <label for="max-tokens">
+                            Max New Tokens ({maxNewTokens})
+                            <span class="tooltip">Controls the maximum length of generated audio. Higher values allow for longer audio.</span>
+                        </label>
+                        <input 
+                            type="range" 
+                            id="max-tokens"
+                            bind:value={maxNewTokens}
+                            min="860"
+                            max="3072"
+                            step="1"
+                        />
+                    </div>
+
+                    <div class="parameter-control">
+                        <label for="cfg-scale">
+                            CFG Scale ({cfgScale})
+                            <span class="tooltip">Controls how closely to follow the prompt. Higher values produce more faithful but potentially less natural output.</span>
+                        </label>
+                        <input 
+                            type="range" 
+                            id="cfg-scale"
+                            bind:value={cfgScale}
+                            min="1"
+                            max="5"
+                            step="0.1"
+                        />
+                    </div>
+
+                    <div class="parameter-control">
+                        <label for="temperature">
+                            Temperature ({temperature})
+                            <span class="tooltip">Controls randomness in generation. Higher values produce more varied but potentially less consistent output.</span>
+                        </label>
+                        <input 
+                            type="range" 
+                            id="temperature"
+                            bind:value={temperature}
+                            min="1"
+                            max="1.5"
+                            step="0.1"
+                        />
+                    </div>
+
+                    <div class="parameter-control">
+                        <label for="top-p">
+                            Top P ({topP})
+                            <span class="tooltip">Controls diversity in sampling. Higher values allow for more diverse outputs.</span>
+                        </label>
+                        <input 
+                            type="range" 
+                            id="top-p"
+                            bind:value={topP}
+                            min="0.8"
+                            max="1"
+                            step="0.01"
+                        />
+                    </div>
+
+                    <div class="parameter-control">
+                        <label for="cfg-filter-top-k">
+                            CFG Filter Top K ({cfgFilterTopK})
+                            <span class="tooltip">Controls the number of top tokens to consider during generation. Higher values allow for more variety.</span>
+                        </label>
+                        <input 
+                            type="range" 
+                            id="cfg-filter-top-k"
+                            bind:value={cfgFilterTopK}
+                            min="15"
+                            max="50"
+                            step="1"
+                        />
+                    </div>
+
+                    <div class="parameter-control">
+                        <label for="speed-factor">
+                            Speed Factor ({speedFactor})
+                            <span class="tooltip">Controls the speed of generated speech. Higher values produce faster speech.</span>
+                        </label>
+                        <input 
+                            type="range" 
+                            id="speed-factor"
+                            bind:value={speedFactor}
+                            min="0.8"
+                            max="1"
+                            step="0.01"
+                        />
+                    </div>
+                </div>
+            {/if}
         </div>
 
         <div class="controls">
@@ -498,6 +618,95 @@
         border-color: #4299e1;
     }
 
+    .generation-settings {
+        margin: 2rem 0;
+        padding: 1rem;
+        background: #f8fafc;
+        border-radius: 12px;
+        border: 2px dashed #e2e8f0;
+    }
+
+    .settings-toggle {
+        background: #4299e1;
+        color: white;
+        padding: 0.5rem 1rem;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        transition: background-color 0.2s;
+    }
+
+    .settings-toggle:hover {
+        background: #3182ce;
+    }
+
+    .settings-panel {
+        margin-top: 1rem;
+        padding: 1rem;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+
+    .parameter-control {
+        margin-bottom: 1.5rem;
+    }
+
+    .parameter-control:last-child {
+        margin-bottom: 0;
+    }
+
+    .parameter-control label {
+        display: block;
+        margin-bottom: 0.5rem;
+        color: #2d3748;
+        font-size: 0.9rem;
+        position: relative;
+    }
+
+    .parameter-control input[type="range"] {
+        width: 100%;
+        height: 6px;
+        background: #e2e8f0;
+        border-radius: 3px;
+        outline: none;
+        -webkit-appearance: none;
+    }
+
+    .parameter-control input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 18px;
+        height: 18px;
+        background: #4299e1;
+        border-radius: 50%;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+
+    .parameter-control input[type="range"]::-webkit-slider-thumb:hover {
+        background: #3182ce;
+    }
+
+    .tooltip {
+        display: none;
+        position: absolute;
+        background: #2d3748;
+        color: white;
+        padding: 0.5rem;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        width: 200px;
+        top: -30px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1;
+    }
+
+    .parameter-control label:hover .tooltip {
+        display: block;
+    }
+
     @media (max-width: 768px) {
         .container {
             padding: 1rem;
@@ -517,6 +726,10 @@
 
         .audio-input-section {
             margin-top: 1rem;
+        }
+
+        .tooltip {
+            display: none !important;
         }
     }
 </style> 
