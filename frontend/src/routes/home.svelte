@@ -32,28 +32,24 @@
     let generationProgress = 0;
     let progressInterval: number;
 
+    let editingMessageIndex: number | null = null;
+    let editText = '';
+
+    let activeMessageControls: number | null = null;
+
     const soundEffects = [
-        'applause',
-        'beep',
         'burps',
-        'chuckle',
-        'claps',
         'clears throat',
         'coughs',
         'exhales',
         'gasps',
         'groans',
         'humming',
-        'inhales',
         'laughs',
         'mumbles',
         'screams',
         'sighs',
-        'sings',
-        'singing',
         'sneezes',
-        'sniffs',
-        'whistles'
     ];
 
     function updateAvailableSpeakers() {
@@ -65,53 +61,22 @@
             return;
         }
 
-        const lastMessage = messages[messages.length - 1];
-        const lastSpeaker = lastMessage.speaker;
-
-        if (messages.length === 1 && lastSpeaker === '[S1]') {
-            // After first S1 message
-            availableSpeakers = ['[S1]', '[S2]'];
-            maxSpeakerNumber = 2;
-            selectedSpeaker = availableSpeakers[0];
-            return;
-        }
-
-        if (messages.length === 2 && messages[0].speaker === '[S1]') {
-            if (lastSpeaker === '[S1]') {
-                // S1 -> S1 pattern
-                availableSpeakers = ['[S1]', '[S2]'];
-                maxSpeakerNumber = 2;
-            } else if (lastSpeaker === '[S2]') {
-                // S1 -> S2 pattern
-                availableSpeakers = ['[S1]', '[S2]', '[S3]'];
-                maxSpeakerNumber = 3;
-            }
-            selectedSpeaker = availableSpeakers[0];
-            return;
-        }
-
-        // For all subsequent messages, maintain the highest speaker number seen
-        const lastSpeakerNum = parseInt(lastSpeaker.match(/\d+/)[0]);
+        // After first message, always make both [S1] and [S2] available
+        availableSpeakers = ['[S1]', '[S2]'];
+        maxSpeakerNumber = 2;
         
-        if (lastSpeaker === '[S2]' && maxSpeakerNumber < 3) {
-            maxSpeakerNumber = 3;  // Introduce S3
-        } else if (lastSpeaker === '[S3]' && maxSpeakerNumber < 4) {
-            maxSpeakerNumber = 4;  // Introduce S4
+        // Keep the current speaker selected if it's valid, otherwise default to [S1]
+        if (!availableSpeakers.includes(selectedSpeaker)) {
+            selectedSpeaker = '[S1]';
         }
-
-        // Create array of all speakers up to maxSpeakerNumber
-        availableSpeakers = Array.from(
-            { length: maxSpeakerNumber }, 
-            (_, i) => `[S${i + 1}]`
-        );
-        
-        selectedSpeaker = availableSpeakers[0];
     }
 
     function addMessage() {
         if (currentInput.trim()) {
             messages = [...messages, { speaker: selectedSpeaker, text: currentInput.trim() }];
             currentInput = '';
+            editingMessageIndex = null;  // Reset editing state
+            selectedSpeaker = selectedSpeaker === '[S1]' ? '[S2]' : '[S1]';
             updateAvailableSpeakers();
         }
     }
@@ -129,6 +94,153 @@
             currentInput = currentInput + (currentInput.endsWith(' ') ? '' : ' ') + effect + ' ';
             selectedEffect = '';
         }
+    }
+
+    function getSupportedMimeType() {
+        // Try to get the default MIME type first
+        try {
+            const recorder = new MediaRecorder(new MediaStream());
+            return recorder.mimeType;
+        } catch (e) {
+            console.warn('Could not get default MIME type, trying specific formats');
+        }
+
+        // Fallback to specific formats
+        const types = [
+            'audio/webm',
+            'audio/webm;codecs=opus',
+            'audio/ogg;codecs=opus',
+            'audio/ogg'
+        ];
+        
+        for (const type of types) {
+            if (MediaRecorder.isTypeSupported(type)) {
+                return type;
+            }
+        }
+
+        // If all else fails, return undefined to let the browser choose
+        return undefined;
+    }
+
+    async function startRecording() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mimeType = getSupportedMimeType();
+            
+            mediaRecorder = new MediaRecorder(stream, { mimeType });
+            audioChunks = [];
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    audioChunks.push(event.data);
+                }
+            };
+
+            mediaRecorder.onstop = async () => {
+                const audioBlob = new Blob(audioChunks, { type: mediaRecorder?.mimeType || 'audio/webm' });
+                
+                // Convert to WAV format
+                const audioContext = new AudioContext();
+                const arrayBuffer = await audioBlob.arrayBuffer();
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                
+                // Convert AudioBuffer to WAV
+                const wavBlob = new Blob([audioBufferToWav(audioBuffer)], { type: 'audio/wav' });
+                
+                if (recordedAudioUrl) {
+                    URL.revokeObjectURL(recordedAudioUrl);
+                }
+                recordedAudioUrl = URL.createObjectURL(wavBlob);
+                audioChunks = [];
+            };
+
+            mediaRecorder.start(100);
+            isRecording = true;
+        } catch (err) {
+            console.error('Recording error:', err);
+            error = 'Failed to start recording. Please check your browser permissions and try again.';
+        }
+    }
+
+    function stopRecording() {
+        if (mediaRecorder && isRecording) {
+            mediaRecorder.stop();
+            mediaRecorder.stream.getTracks().forEach(track => track.stop());
+            isRecording = false;
+        }
+    }
+
+    function handleFileUpload(event: Event) {
+        const input = event.target as HTMLInputElement;
+        const file = input.files?.[0];
+        
+        if (file) {
+            // Accept both MP3 and WAV files
+            if (file.type !== 'audio/mp3' && file.type !== 'audio/mpeg' && file.type !== 'audio/wav') {
+                error = 'Please upload an MP3 or WAV file.';
+                return;
+            }
+
+            // Convert MP3 to WAV if needed
+            if (file.type === 'audio/mp3' || file.type === 'audio/mpeg') {
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    try {
+                        const audioContext = new AudioContext();
+                        const arrayBuffer = e.target?.result as ArrayBuffer;
+                        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                        
+                        // Convert to WAV
+                        const wavBlob = new Blob([audioBufferToWav(audioBuffer)], { type: 'audio/wav' });
+                        
+                        if (uploadedAudioUrl) {
+                            URL.revokeObjectURL(uploadedAudioUrl);
+                        }
+                        uploadedAudioUrl = URL.createObjectURL(wavBlob);
+                        error = null;
+                    } catch (err) {
+                        console.error('Error converting audio:', err);
+                        error = 'Failed to process audio file. Please try a different file.';
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            } else {
+                // Direct WAV file handling
+                if (uploadedAudioUrl) {
+                    URL.revokeObjectURL(uploadedAudioUrl);
+                }
+                uploadedAudioUrl = URL.createObjectURL(file);
+                error = null;
+            }
+        }
+    }
+
+    function formatSpeakerName(speaker: string) {
+        return speaker.replace('[S1]', 'Speaker 1').replace('[S2]', 'Speaker 2');
+    }
+
+    function startEditing(index: number) {
+        editingMessageIndex = index;
+        editText = messages[index].text;
+    }
+
+    function saveEdit() {
+        if (editingMessageIndex !== null) {
+            messages[editingMessageIndex].text = editText;
+            messages = [...messages]; // Trigger reactivity
+            editingMessageIndex = null;
+        }
+    }
+
+    function deleteMessage(index: number) {
+        messages = messages.filter((_, i) => i !== index);
+        editingMessageIndex = null;  // Reset editing state
+        updateAvailableSpeakers();
+    }
+
+    function toggleMessageControls(index: number) {
+        activeMessageControls = activeMessageControls === index ? null : index;
     }
 
     async function handleGenerate() {
@@ -163,14 +275,36 @@
             formData.append('speed_factor', speedFactor.toString());
             
             // Add audio file if available (either uploaded or recorded)
-            if (uploadedAudioUrl) {
-                const response = await fetch(uploadedAudioUrl);
+            const referenceAudioUrl = uploadedAudioUrl || recordedAudioUrl;
+            if (referenceAudioUrl) {
+                const response = await fetch(referenceAudioUrl);
                 const blob = await response.blob();
-                formData.append('audio', blob, 'reference.mp3');
-            } else if (recordedAudioUrl) {
-                const response = await fetch(recordedAudioUrl);
-                const blob = await response.blob();
-                formData.append('audio', blob, 'recorded.mp3');
+                
+                // Convert to WAV format with proper sample rate
+                const audioContext = new AudioContext();
+                const arrayBuffer = await blob.arrayBuffer();
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                
+                // Ensure mono audio
+                let monoBuffer: AudioBuffer;
+                if (audioBuffer.numberOfChannels > 1) {
+                    const monoData = new Float32Array(audioBuffer.length);
+                    for (let i = 0; i < audioBuffer.length; i++) {
+                        let sum = 0;
+                        for (let channel = 0; channel < audioBuffer.numberOfChannels; channel++) {
+                            sum += audioBuffer.getChannelData(channel)[i];
+                        }
+                        monoData[i] = sum / audioBuffer.numberOfChannels;
+                    }
+                    monoBuffer = audioContext.createBuffer(1, audioBuffer.length, audioBuffer.sampleRate);
+                    monoBuffer.copyToChannel(monoData, 0);
+                } else {
+                    monoBuffer = audioBuffer;
+                }
+                
+                // Convert to WAV
+                const wavBlob = new Blob([audioBufferToWav(monoBuffer)], { type: 'audio/wav' });
+                formData.append('audio', wavBlob, 'reference.wav');
             }
 
             const response = await fetch('http://localhost:8000/api/generate', {
@@ -204,7 +338,7 @@
 
         } catch (err) {
             console.error('Generation error:', err);
-            error = err.message || 'Failed to generate audio. Please try again.';
+            error = (err as Error).message || 'Failed to generate audio. Please try again.';
             if (audioUrl) {
                 URL.revokeObjectURL(audioUrl);
                 audioUrl = null;
@@ -218,56 +352,57 @@
         }
     }
 
-    async function startRecording() {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(stream);
-            audioChunks = [];
+    // Helper function to convert AudioBuffer to WAV format
+    function audioBufferToWav(buffer: AudioBuffer): ArrayBuffer {
+        const numOfChan = buffer.numberOfChannels;
+        const length = buffer.length * numOfChan * 2;
+        const buffer2 = new ArrayBuffer(44 + length);
+        const view = new DataView(buffer2);
+        const channels = [];
+        let offset = 0;
+        let pos = 0;
 
-            mediaRecorder.ondataavailable = (event) => {
-                audioChunks.push(event.data);
-            };
+        // Write WAV header
+        setUint32(0x46464952);                         // "RIFF"
+        setUint32(36 + length);                        // file length - 8
+        setUint32(0x45564157);                         // "WAVE"
+        setUint32(0x20746d66);                         // "fmt " chunk
+        setUint32(16);                                 // length = 16
+        setUint16(1);                                  // PCM (uncompressed)
+        setUint16(numOfChan);
+        setUint32(buffer.sampleRate);
+        setUint32(buffer.sampleRate * 2 * numOfChan);  // avg. bytes/sec
+        setUint16(numOfChan * 2);                      // block-align
+        setUint16(16);                                 // 16-bit
+        setUint32(0x61746164);                         // "data" - chunk
+        setUint32(length);                             // chunk length
 
-            mediaRecorder.onstop = () => {
-                const audioBlob = new Blob(audioChunks, { type: 'audio/mp3' });
-                if (recordedAudioUrl) {
-                    URL.revokeObjectURL(recordedAudioUrl);
-                }
-                recordedAudioUrl = URL.createObjectURL(audioBlob);
-            };
-
-            mediaRecorder.start();
-            isRecording = true;
-        } catch (err) {
-            console.error('Recording error:', err);
-            error = 'Failed to start recording. Please check your microphone permissions.';
+        // Write interleaved data
+        for (let i = 0; i < buffer.numberOfChannels; i++) {
+            channels.push(buffer.getChannelData(i));
         }
-    }
 
-    function stopRecording() {
-        if (mediaRecorder && isRecording) {
-            mediaRecorder.stop();
-            mediaRecorder.stream.getTracks().forEach(track => track.stop());
-            isRecording = false;
-        }
-    }
-
-    function handleFileUpload(event: Event) {
-        const input = event.target as HTMLInputElement;
-        const file = input.files?.[0];
-        
-        if (file) {
-            if (file.type !== 'audio/mp3' && file.type !== 'audio/mpeg') {
-                error = 'Please upload an MP3 file.';
-                return;
+        while (pos < buffer.length) {
+            for (let i = 0; i < numOfChan; i++) {
+                let sample = Math.max(-1, Math.min(1, channels[i][pos]));
+                sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
+                view.setInt16(44 + offset, sample, true);
+                offset += 2;
             }
-
-            if (uploadedAudioUrl) {
-                URL.revokeObjectURL(uploadedAudioUrl);
-            }
-            uploadedAudioUrl = URL.createObjectURL(file);
-            error = null;
+            pos++;
         }
+
+        function setUint16(data: number) {
+            view.setUint16(pos, data, true);
+            pos += 2;
+        }
+
+        function setUint32(data: number) {
+            view.setUint32(pos, data, true);
+            pos += 4;
+        }
+
+        return buffer2;
     }
 </script>
 
@@ -286,10 +421,38 @@
                         <p class="helper-text">Type messages for different speakers to generate conversation</p>
                     </div>
                     <div class="message-area">
-                        {#each messages as message}
-                            <div class="message">
-                                <span class="speaker-label" data-speaker={message.speaker}>{message.speaker}</span>
-                                <p class="message-text">{message.text}</p>
+                        {#each messages as message, i}
+                            <div class="message" data-speaker={message.speaker}>
+                                <div class="message-text">
+                                    <div class="message-header">
+                                        <div class="bubble-speaker">{formatSpeakerName(message.speaker)}</div>
+                                        <div class="menu-container">
+                                            <button class="menu-dots">
+                                                <svg width="14" height="14" viewBox="0 0 16 16">
+                                                    <circle cx="8" cy="3" r="1.5" />
+                                                    <circle cx="8" cy="8" r="1.5" />
+                                                    <circle cx="8" cy="13" r="1.5" />
+                                                </svg>
+                                            </button>
+                                            <div class="message-controls">
+                                                <button class="control-button" on:click={() => startEditing(i)}>edit</button>
+                                                <button class="control-button" on:click={() => deleteMessage(i)}>delete</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {#if editingMessageIndex === i}
+                                        <input 
+                                            bind:value={editText}
+                                            class="edit-input"
+                                            on:keydown={(e) => {
+                                                if (e.key === 'Enter') saveEdit();
+                                                if (e.key === 'Escape') editingMessageIndex = null;
+                                            }}
+                                        />
+                                    {:else}
+                                        <div class="bubble-content">{message.text}</div>
+                                    {/if}
+                                </div>
                             </div>
                         {/each}
                     </div>
@@ -300,7 +463,7 @@
                                 class="speaker-select"
                             >
                                 {#each availableSpeakers as speaker}
-                                    <option value={speaker}>{speaker}</option>
+                                    <option value={speaker}>{formatSpeakerName(speaker)}</option>
                                 {/each}
                             </select>
                             <textarea
@@ -313,6 +476,7 @@
                                 class="send-button"
                                 on:click={addMessage}
                                 disabled={!currentInput.trim()}
+                                aria-label="Send message"
                             >
                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                     <line x1="22" y1="2" x2="11" y2="13"></line>
@@ -335,76 +499,26 @@
                         </div>
                     </div>
                 </div>
-
-                <div class="audio-input-section">
-                    <h3>Reference Audio (optional)</h3>
-                    <div class="audio-controls">
-                        <div class="audio-button-group">
-                            <label class="audio-button" for="audio-file" title="Upload Audio">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                                    <polyline points="17 8 12 3 7 8"/>
-                                    <line x1="12" y1="3" x2="12" y2="15"/>
-                                </svg>
-                                <input
-                                    type="file"
-                                    id="audio-file"
-                                    accept="audio/mp3,audio/mpeg"
-                                    on:change={handleFileUpload}
-                                    class="hidden-input"
-                                />
-                            </label>
-
-                            {#if isRecording}
-                                <button 
-                                    class="audio-button recording"
-                                    on:click={stopRecording}
-                                    title="Stop Recording"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                        <rect x="6" y="6" width="12" height="12" rx="2"/>
-                                    </svg>
-                                </button>
-                            {:else}
-                                <button 
-                                    class="audio-button"
-                                    on:click={startRecording}
-                                    title="Start Recording"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
-                                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                                        <line x1="12" y1="19" x2="12" y2="22"/>
-                                    </svg>
-                                </button>
-                            {/if}
-                        </div>
-
-                        {#if uploadedAudioUrl || recordedAudioUrl}
-                            <div class="audio-preview">
-                                <audio controls src={uploadedAudioUrl || recordedAudioUrl}>
-                                    Your browser does not support the audio element.
-                                </audio>
-                            </div>
-                        {/if}
-                    </div>
-                </div>
             </div>
 
             <div class="side-controls">
                 <div class="generation-settings">
-                    <h3>Generation Settings</h3>
+                    <div class="frame-header">
+                        <h3>Generation Settings</h3>
+                        <p class="helper-text">Adjust parameters to control the generated speech</p>
+                    </div>
                     <div class="settings-panel">
                         <div class="parameter-control">
                             <label for="max-tokens">
                                 Max New Tokens ({maxNewTokens})
                                 <div class="tooltip-container">
-                                    <div class="tooltip-trigger" on:mouseenter={(e) => {
-                                        const tooltip = e.currentTarget.nextElementSibling;
+                                    <button class="tooltip-trigger" on:mouseenter={(e) => {
+                                        const tooltip = e.currentTarget.nextElementSibling as HTMLElement;
+                                        if (!tooltip) return;
                                         const rect = e.currentTarget.getBoundingClientRect();
                                         tooltip.style.top = (rect.top - tooltip.offsetHeight - 10) + 'px';
                                         tooltip.style.left = (rect.left + (rect.width / 2) - (tooltip.offsetWidth / 2)) + 'px';
-                                    }}>?</div>
+                                    }}>?</button>
                                     <div class="tooltip">Controls the maximum length of generated audio. Higher values allow for longer audio.</div>
                                 </div>
                             </label>
@@ -422,12 +536,13 @@
                             <label for="cfg-scale">
                                 CFG Scale ({cfgScale})
                                 <div class="tooltip-container">
-                                    <div class="tooltip-trigger" on:mouseenter={(e) => {
-                                        const tooltip = e.currentTarget.nextElementSibling;
+                                    <button class="tooltip-trigger" on:mouseenter={(e) => {
+                                        const tooltip = e.currentTarget.nextElementSibling as HTMLElement;
+                                        if (!tooltip) return;
                                         const rect = e.currentTarget.getBoundingClientRect();
                                         tooltip.style.top = (rect.top - tooltip.offsetHeight - 10) + 'px';
                                         tooltip.style.left = (rect.left + (rect.width / 2) - (tooltip.offsetWidth / 2)) + 'px';
-                                    }}>?</div>
+                                    }}>?</button>
                                     <div class="tooltip">Controls how closely to follow the prompt. Higher values produce more faithful but potentially less natural output.</div>
                                 </div>
                             </label>
@@ -445,12 +560,13 @@
                             <label for="temperature">
                                 Temperature ({temperature})
                                 <div class="tooltip-container">
-                                    <div class="tooltip-trigger" on:mouseenter={(e) => {
-                                        const tooltip = e.currentTarget.nextElementSibling;
+                                    <button class="tooltip-trigger" on:mouseenter={(e) => {
+                                        const tooltip = e.currentTarget.nextElementSibling as HTMLElement;
+                                        if (!tooltip) return;
                                         const rect = e.currentTarget.getBoundingClientRect();
                                         tooltip.style.top = (rect.top - tooltip.offsetHeight - 10) + 'px';
                                         tooltip.style.left = (rect.left + (rect.width / 2) - (tooltip.offsetWidth / 2)) + 'px';
-                                    }}>?</div>
+                                    }}>?</button>
                                     <div class="tooltip">Controls randomness in generation. Higher values produce more varied but potentially less consistent output.</div>
                                 </div>
                             </label>
@@ -468,12 +584,13 @@
                             <label for="top-p">
                                 Top P ({topP})
                                 <div class="tooltip-container">
-                                    <div class="tooltip-trigger" on:mouseenter={(e) => {
-                                        const tooltip = e.currentTarget.nextElementSibling;
+                                    <button class="tooltip-trigger" on:mouseenter={(e) => {
+                                        const tooltip = e.currentTarget.nextElementSibling as HTMLElement;
+                                        if (!tooltip) return;
                                         const rect = e.currentTarget.getBoundingClientRect();
                                         tooltip.style.top = (rect.top - tooltip.offsetHeight - 10) + 'px';
                                         tooltip.style.left = (rect.left + (rect.width / 2) - (tooltip.offsetWidth / 2)) + 'px';
-                                    }}>?</div>
+                                    }}>?</button>
                                     <div class="tooltip">Controls diversity in sampling. Higher values allow for more diverse outputs.</div>
                                 </div>
                             </label>
@@ -491,12 +608,13 @@
                             <label for="cfg-filter-top-k">
                                 CFG Filter Top K ({cfgFilterTopK})
                                 <div class="tooltip-container">
-                                    <div class="tooltip-trigger" on:mouseenter={(e) => {
-                                        const tooltip = e.currentTarget.nextElementSibling;
+                                    <button class="tooltip-trigger" on:mouseenter={(e) => {
+                                        const tooltip = e.currentTarget.nextElementSibling as HTMLElement;
+                                        if (!tooltip) return;
                                         const rect = e.currentTarget.getBoundingClientRect();
                                         tooltip.style.top = (rect.top - tooltip.offsetHeight - 10) + 'px';
                                         tooltip.style.left = (rect.left + (rect.width / 2) - (tooltip.offsetWidth / 2)) + 'px';
-                                    }}>?</div>
+                                    }}>?</button>
                                     <div class="tooltip">Controls the number of top tokens to consider during generation. Higher values allow for more variety.</div>
                                 </div>
                             </label>
@@ -514,12 +632,13 @@
                             <label for="speed-factor">
                                 Speed Factor ({speedFactor})
                                 <div class="tooltip-container">
-                                    <div class="tooltip-trigger" on:mouseenter={(e) => {
-                                        const tooltip = e.currentTarget.nextElementSibling;
+                                    <button class="tooltip-trigger" on:mouseenter={(e) => {
+                                        const tooltip = e.currentTarget.nextElementSibling as HTMLElement;
+                                        if (!tooltip) return;
                                         const rect = e.currentTarget.getBoundingClientRect();
                                         tooltip.style.top = (rect.top - tooltip.offsetHeight - 10) + 'px';
                                         tooltip.style.left = (rect.left + (rect.width / 2) - (tooltip.offsetWidth / 2)) + 'px';
-                                    }}>?</div>
+                                    }}>?</button>
                                     <div class="tooltip">Controls the speed of generated speech. Higher values produce faster speech.</div>
                                 </div>
                             </label>
@@ -533,6 +652,64 @@
                             />
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="audio-input-section">
+            <h3>Reference Audio (optional)</h3>
+            <div class="audio-controls">
+                <div class="audio-button-group">
+                    <label class="audio-button" for="audio-file" title="Upload Audio" aria-label="Upload audio file">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/>
+                            <line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                        <input
+                            type="file"
+                            id="audio-file"
+                            accept="audio/mp3,audio/mpeg"
+                            on:change={handleFileUpload}
+                            class="hidden-input"
+                        />
+                    </label>
+
+                    {#if isRecording}
+                        <button 
+                            class="audio-button recording"
+                            on:click={stopRecording}
+                            title="Stop Recording"
+                            aria-label="Stop recording"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="6" y="6" width="12" height="12" rx="2"/>
+                            </svg>
+                        </button>
+                    {:else}
+                        <button 
+                            class="audio-button"
+                            on:click={startRecording}
+                            title="Start Recording"
+                            aria-label="Start recording"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+                                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                                <line x1="12" y1="19" x2="12" y2="22"/>
+                            </svg>
+                        </button>
+                    {/if}
+                </div>
+
+                <div class="audio-preview-container">
+                    {#if uploadedAudioUrl || recordedAudioUrl}
+                        <div class="audio-preview">
+                            <audio controls src={uploadedAudioUrl || recordedAudioUrl} preload="auto">
+                                Your browser does not support the audio element.
+                            </audio>
+                        </div>
+                    {/if}
                 </div>
             </div>
         </div>
@@ -608,13 +785,16 @@
         border-radius: 20px;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
         padding: 2rem;
+        max-width: 1000px;
+        margin-left: auto;
+        margin-right: auto;
     }
 
     .main-input-container {
         display: grid;
-        grid-template-columns: minmax(300px, 2fr) minmax(250px, 1fr);
+        grid-template-columns: minmax(300px, 1.2fr) minmax(250px, 1fr);
         gap: 2rem;
-        margin-bottom: 2rem;
+        margin-bottom: 1rem;
         align-items: start;
     }
 
@@ -631,34 +811,35 @@
         display: flex;
         flex-direction: column;
         height: 100%;
-        min-height: 260px;
+        min-height: 200px;
         border: 1px solid #e5e7eb;
     }
 
     .frame-header {
-        padding-bottom: 0.5rem;
-        border-bottom: 1px solid #eee;
-        margin-bottom: 0.35rem;
-    }
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #eee;
+    margin-bottom: 0.35rem;
+}
 
     .frame-header h3 {
-        font-size: 0.9rem;
-        margin: 0 0 0.35rem 0;
-    }
+    font-size: 0.9rem;
+    margin: 0;
+}
 
     .helper-text {
         font-size: 0.8rem;
+        color: #666;
     }
 
     .message-area {
         flex: 1;
-        min-height: 150px;
-        max-height: 150px;
+        min-height: 200px;
+        max-height: 200px;
         overflow-y: auto;
-        padding: 0.35rem 0;
+        padding: 0.35rem 1rem;
         display: flex;
         flex-direction: column;
-        gap: 0.35rem;
+        gap: 0.2rem;
     }
 
     .message {
@@ -666,7 +847,93 @@
         gap: 0.4rem;
         align-items: flex-start;
         animation: fadeIn 0.3s ease;
-        padding: 0.25rem;
+        padding: 0.1rem;
+        flex-direction: row;
+    }
+
+    .message-header {
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+        margin-bottom: 0.1rem;
+    }
+
+    .menu-container {
+        position: relative;
+    }
+
+    .menu-dots {
+        background: none;
+        border: none;
+        padding: 0;
+        cursor: pointer;
+        opacity: 0.6;
+        display: flex;
+        align-items: center;
+        fill: currentColor;
+    }
+
+    .menu-dots:hover {
+        opacity: 1;
+    }
+
+    .menu-container:hover .message-controls {
+        display: flex;
+    }
+
+    .message-controls {
+        display: none;
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        background: white;
+        border: 1px solid #eee;
+        border-radius: 4px;
+        padding: 0.3rem;
+        flex-direction: column;
+        gap: 0.3rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        z-index: 10;
+        min-width: 80px;
+    }
+
+    .control-button {
+        background: none;
+        border: none;
+        color: #666;
+        padding: 0.2rem 0.5rem;
+        font-size: 0.8rem;
+        cursor: pointer;
+        text-align: left;
+        border-radius: 3px;
+        white-space: nowrap;
+    }
+
+    .control-button:hover {
+        background: #f5f5f5;
+    }
+
+    .bubble-speaker {
+        font-size: 0.7rem;
+        opacity: 0.7;
+        margin-bottom: 0.1rem;
+        font-weight: 500;
+    }
+
+    .bubble-content {
+        font-size: 0.9rem;
+        line-height: 1.3;
+    }
+
+    .message[data-speaker="[S1]"] {
+        flex-direction: row-reverse;
+        justify-content: flex-start;
+    }
+
+    .message[data-speaker="[S2]"] {
+        flex-direction: row;
+        justify-content: flex-start;
     }
 
     @keyframes fadeIn {
@@ -684,20 +951,12 @@
     }
 
     /* Speaker colors */
-    .speaker-label[data-speaker="[S1]"] {
-        background: #6366f1; /* Indigo */
+    .message[data-speaker="[S1]"] .bubble-speaker {
+        color: #6366f1;
     }
 
-    .speaker-label[data-speaker="[S2]"] {
-        background: #ec4899; /* Pink */
-    }
-
-    .speaker-label[data-speaker="[S3]"] {
-        background: #14b8a6; /* Teal */
-    }
-
-    .speaker-label[data-speaker="[S4]"] {
-        background: #f59e0b; /* Amber */
+    .message[data-speaker="[S2]"] .bubble-speaker {
+        color: #ec4899;
     }
 
     /* Dropdown colors matching speakers */
@@ -709,22 +968,45 @@
         color: #ec4899;
     }
 
-    .speaker-select option[value="[S3]"] {
-        color: #14b8a6;
-    }
-
-    .speaker-select option[value="[S4]"] {
-        color: #f59e0b;
-    }
-
     .message-text {
         margin: 0;
-        padding: 0.35rem 0.5rem;
-        background: #f5f5f5;
-        border-radius: 8px;
+        padding: 0.25rem 0.5rem;
         font-size: 0.9rem;
         line-height: 1.3;
-        flex: 1;
+        max-width: 70%;
+        position: relative;
+    }
+
+    .message[data-speaker="[S1]"] .message-text {
+        background: #e8e8fd;
+        border-radius: 15px 15px 3px 15px;
+    }
+
+    .message[data-speaker="[S2]"] .message-text {
+        background: #f5f5f5;
+        border-radius: 15px 15px 15px 3px;
+    }
+
+    .message[data-speaker="[S1]"] .message-text::after {
+        content: '';
+        position: absolute;
+        right: -8px;
+        bottom: 0;
+        width: 10px;
+        height: 10px;
+        background: #e8e8fd;
+        clip-path: polygon(0 0, 0% 100%, 100% 100%);
+    }
+
+    .message[data-speaker="[S2]"] .message-text::after {
+        content: '';
+        position: absolute;
+        left: -8px;
+        bottom: 0;
+        width: 10px;
+        height: 10px;
+        background: #f5f5f5;
+        clip-path: polygon(100% 0, 100% 100%, 0 100%);
     }
 
     .input-area {
@@ -739,7 +1021,7 @@
     .input-container {
         display: flex;
         gap: 0.5rem;
-        align-items: flex-end;
+        align-items: center;
         background: white;
         border: 1px solid #eee;
         border-radius: 12px;
@@ -747,7 +1029,7 @@
     }
 
     .speaker-select {
-        width: 70px;
+        width: 100px;
         padding: 0.4rem;
         border: none;
         background: #f5f5f5;
@@ -816,19 +1098,23 @@
     .audio-input-section {
         background: #fcfcfc;
         border-radius: 16px;
-        padding: 1rem;
+        padding: 0.75rem;
+        margin-bottom: 1rem;
+        border: 1px solid #e5e7eb;
     }
 
     .audio-input-section h3 {
         font-size: 0.9rem;
-        margin: 0 0 0.75rem 0;
+        margin: 0 0 0.5rem 0;
         font-weight: 500;
     }
 
     .audio-controls {
         display: flex;
         flex-direction: column;
-        gap: 0.75rem;
+        gap: 1rem;
+        min-height: 90px;
+        justify-content: flex-start;
     }
 
     .audio-button-group {
@@ -867,11 +1153,17 @@
         display: none;
     }
 
+    .audio-preview-container {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 45px;
+    }
+
     .audio-preview {
-        background: white;
-        border: 1px solid #eee;
-        border-radius: 8px;
-        padding: 0.25rem;
+        width: 100%;
+        max-width: 500px;
     }
 
     .audio-preview audio {
@@ -934,36 +1226,39 @@
     }
 
     .output-audio {
-        background: #fcfcfc;
-        border-radius: 16px;
-        padding: 1rem;
-        min-height: 60px;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-    }
+    background: #fcfcfc;
+    border-radius: 16px;
+    padding: 1rem;
+    min-height: 60px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border: 1px solid #e5e7eb;
+}
 
-    audio {
-        width: 100%;
-        max-width: 500px;
-        height: 36px;
-    }
+.error-message {
+    color: #e53e3e;
+    font-weight: 500;
+    margin: 0;
+    font-size: 0.9rem;
+}
 
-    .error-message {
-        color: #e53e3e;
-        font-weight: 500;
-        margin: 0;
-        font-size: 0.9rem;
-    }
+audio {
+    width: 100%;
+    max-width: 500px;
+    height: 36px;
+}
+
+.placeholder-text {
+    color: #666;
+    margin: 0;
+    font-size: 0.9rem;
+}
 
     .placeholder-text {
         color: #666;
         margin: 0;
         font-size: 0.9rem;
-    }
-
-    .sound-effects-section {
-        display: none;
     }
 
     .effect-controls {
@@ -1002,45 +1297,42 @@
         color: #333;
     }
 
-    .effect-button {
-        display: none;
-    }
-
     .generation-settings {
-        background: #fcfcfc;
-        border-radius: 16px;
-        padding: 1rem;
-        position: sticky;
-        top: 2rem;
-        height: calc(260px + 0.5rem + 180px); /* Increased audio section height estimate further */
-        display: flex;
-        flex-direction: column;
-    }
+    background: #fcfcfc;
+    border-radius: 16px;
+    padding: 1rem;
+    position: sticky;
+    top: 2rem;
+    height: calc(200px + 0.5rem + 180px);
+    display: flex;
+    flex-direction: column;
+    border: 1px solid #e5e7eb;
+}
 
-    .settings-panel {
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        flex: 1;
-        padding-right: 0.25rem;
-        overflow: visible;
-        position: relative;
-    }
+.settings-panel {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    flex: 1;
+    padding-right: 0.25rem;
+    overflow: visible;
+    position: relative;
+}
 
-    .parameter-control {
-        margin-bottom: 0;
-        flex-shrink: 0;
-        padding: 0.5rem 0;
-        position: relative;
-    }
+.parameter-control {
+    margin-bottom: 0;
+    flex-shrink: 0;
+    padding: 0.25rem 0;
+    position: relative;
+}
 
-    .parameter-control label {
-        font-size: 0.85rem;
-        margin-bottom: 0.75rem;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
+.parameter-control label {
+    font-size: 0.85rem;
+    margin-bottom: 0.35rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
 
     .tooltip-container {
         position: relative;
@@ -1059,11 +1351,13 @@
         font-size: 0.75rem;
         cursor: help;
         transition: all 0.2s ease;
+        border: none;
+        padding: 0;
     }
 
     .tooltip-trigger:hover {
         background: #e0e0e0;
-        color: #333;
+        transform: scale(1.1);
     }
 
     .tooltip {
@@ -1086,7 +1380,7 @@
 
     .generation-settings h3 {
         font-size: 0.9rem;
-        margin: 0 0 1.5rem 0;
+        margin: 0;
         font-weight: 500;
     }
 
@@ -1159,4 +1453,37 @@
             max-height: 150px;
         }
     }
+
+    .message[data-speaker="[S2]"] .message-controls {
+        justify-content: flex-start;
+    }
+
+    .control-button {
+        background: none;
+        border: none;
+        color: #666;
+        padding: 0;
+        font-size: 0.7rem;
+        cursor: pointer;
+        opacity: 0.7;
+    }
+
+    .control-button:hover {
+        opacity: 1;
+        text-decoration: underline;
+    }
+
+    .edit-input {
+        width: 95%;
+        padding: 0.2rem 0.3rem 0.2rem 0.2rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 0.9rem;
+        font-family: inherit;
+        display: block;
+        margin: 0 auto;
+        margin-right: 0.4rem;
+    }
+
+
 </style> 
