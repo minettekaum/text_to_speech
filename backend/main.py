@@ -72,9 +72,22 @@ async def process_audio_file(file: UploadFile) -> Tuple[np.ndarray, int]:
             logger.debug(f"Processing audio file: {file.filename}")
             content = await file.read()
             f_audio.write(content)
+            f_audio.flush()  # Ensure all data is written
             
             # Read and preprocess audio data
-            audio_data, sr = sf.read(str(temp_path))
+            try:
+                audio_data, sr = sf.read(str(temp_path))
+            except Exception as e:
+                # If soundfile fails, try using librosa as a fallback
+                try:
+                    import librosa
+                    audio_data, sr = librosa.load(str(temp_path), sr=None)
+                except ImportError:
+                    logger.error("librosa not installed. Please install it for better audio format support.")
+                    raise HTTPException(status_code=400, detail="Audio format not supported. Please use WAV, MP3, or FLAC format.")
+                except Exception as e2:
+                    logger.error(f"Both soundfile and librosa failed to read audio: {e2}")
+                    raise HTTPException(status_code=400, detail="Failed to process audio. Please ensure the file is a valid audio file.")
             
             # Basic audio preprocessing for consistency
             # Convert to float32 in [-1, 1] range if integer type
@@ -96,12 +109,22 @@ async def process_audio_file(file: UploadFile) -> Tuple[np.ndarray, int]:
                     audio_data = audio_data[0] if audio_data.shape[0] < audio_data.shape[1] else audio_data[:, 0]
                 audio_data = np.ascontiguousarray(audio_data)
 
+            # Ensure audio is not empty
+            if len(audio_data) == 0:
+                raise HTTPException(status_code=400, detail="Audio file appears to be empty")
+
+            # Ensure audio is not too long (e.g., > 30 seconds at 44.1kHz)
+            max_samples = 30 * 44100
+            if len(audio_data) > max_samples:
+                logger.warning(f"Audio too long ({len(audio_data)} samples), truncating to {max_samples} samples")
+                audio_data = audio_data[:max_samples]
+
             return audio_data, sr
 
         except Exception as e:
             logger.error(f"Error processing audio file: {e}")
             if "Format not recognized" in str(e):
-                raise HTTPException(status_code=400, detail="Audio format not supported. Please use WAV or FLAC format.")
+                raise HTTPException(status_code=400, detail="Audio format not supported. Please use WAV, MP3, or FLAC format.")
             raise HTTPException(status_code=400, detail=f"Failed to process audio: {str(e)}")
         finally:
             try:
@@ -151,6 +174,21 @@ async def generate_speech(
             logger.info("Processing audio prompt")
             audio_prompt, _ = await process_audio_file(audio)
             logger.debug(f"Audio prompt processed successfully: {audio_prompt.shape}")
+            # Ensure audio prompt is in the correct shape for the model
+            if audio_prompt is not None:
+                # Convert numpy array to PyTorch tensor and move to correct device
+                audio_prompt = torch.from_numpy(audio_prompt).to(device)
+                # Ensure the audio prompt is the correct length (1 second at 16kHz)
+                if len(audio_prompt) > 16000:
+                    audio_prompt = audio_prompt[:16000]
+                elif len(audio_prompt) < 16000:
+                    # Pad with zeros if too short
+                    padding = torch.zeros(16000 - len(audio_prompt), device=device)
+                    audio_prompt = torch.cat([audio_prompt, padding])
+                
+                # Take evenly spaced samples to get [9, 9] shape
+                indices = torch.linspace(0, len(audio_prompt)-1, 81).long()  # 9x9=81 samples
+                audio_prompt = audio_prompt[indices].reshape(9, 9)
 
         # Generate audio
         start_time = time.time()

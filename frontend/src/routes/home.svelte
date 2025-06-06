@@ -52,6 +52,29 @@
         'sneezes',
     ];
 
+    function formatSpeakerName(speaker: string) {
+        return speaker.replace('[S1]', 'Speaker 1').replace('[S2]', 'Speaker 2');
+    }
+
+    function startEditing(index: number) {
+        editingMessageIndex = index;
+        editText = messages[index].text;
+    }
+
+    function saveEdit() {
+        if (editingMessageIndex !== null) {
+            messages[editingMessageIndex].text = editText;
+            messages = [...messages]; // Trigger reactivity
+            editingMessageIndex = null;
+        }
+    }
+
+    function deleteMessage(index: number) {
+        messages = messages.filter((_, i) => i !== index);
+        editingMessageIndex = null;  // Reset editing state
+        updateAvailableSpeakers();
+    }
+
     function updateAvailableSpeakers() {
         if (messages.length === 0) {
             // First message
@@ -96,153 +119,6 @@
         }
     }
 
-    function getSupportedMimeType() {
-        // Try to get the default MIME type first
-        try {
-            const recorder = new MediaRecorder(new MediaStream());
-            return recorder.mimeType;
-        } catch (e) {
-            console.warn('Could not get default MIME type, trying specific formats');
-        }
-
-        // Fallback to specific formats
-        const types = [
-            'audio/webm',
-            'audio/webm;codecs=opus',
-            'audio/ogg;codecs=opus',
-            'audio/ogg'
-        ];
-        
-        for (const type of types) {
-            if (MediaRecorder.isTypeSupported(type)) {
-                return type;
-            }
-        }
-
-        // If all else fails, return undefined to let the browser choose
-        return undefined;
-    }
-
-    async function startRecording() {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const mimeType = getSupportedMimeType();
-            
-            mediaRecorder = new MediaRecorder(stream, { mimeType });
-            audioChunks = [];
-
-            mediaRecorder.ondataavailable = (event) => {
-                if (event.data.size > 0) {
-                    audioChunks.push(event.data);
-                }
-            };
-
-            mediaRecorder.onstop = async () => {
-                const audioBlob = new Blob(audioChunks, { type: mediaRecorder?.mimeType || 'audio/webm' });
-                
-                // Convert to WAV format
-                const audioContext = new AudioContext();
-                const arrayBuffer = await audioBlob.arrayBuffer();
-                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-                
-                // Convert AudioBuffer to WAV
-                const wavBlob = new Blob([audioBufferToWav(audioBuffer)], { type: 'audio/wav' });
-                
-                if (recordedAudioUrl) {
-                    URL.revokeObjectURL(recordedAudioUrl);
-                }
-                recordedAudioUrl = URL.createObjectURL(wavBlob);
-                audioChunks = [];
-            };
-
-            mediaRecorder.start(100);
-            isRecording = true;
-        } catch (err) {
-            console.error('Recording error:', err);
-            error = 'Failed to start recording. Please check your browser permissions and try again.';
-        }
-    }
-
-    function stopRecording() {
-        if (mediaRecorder && isRecording) {
-            mediaRecorder.stop();
-            mediaRecorder.stream.getTracks().forEach(track => track.stop());
-            isRecording = false;
-        }
-    }
-
-    function handleFileUpload(event: Event) {
-        const input = event.target as HTMLInputElement;
-        const file = input.files?.[0];
-        
-        if (file) {
-            // Accept both MP3 and WAV files
-            if (file.type !== 'audio/mp3' && file.type !== 'audio/mpeg' && file.type !== 'audio/wav') {
-                error = 'Please upload an MP3 or WAV file.';
-                return;
-            }
-
-            // Convert MP3 to WAV if needed
-            if (file.type === 'audio/mp3' || file.type === 'audio/mpeg') {
-                const reader = new FileReader();
-                reader.onload = async (e) => {
-                    try {
-                        const audioContext = new AudioContext();
-                        const arrayBuffer = e.target?.result as ArrayBuffer;
-                        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-                        
-                        // Convert to WAV
-                        const wavBlob = new Blob([audioBufferToWav(audioBuffer)], { type: 'audio/wav' });
-                        
-                        if (uploadedAudioUrl) {
-                            URL.revokeObjectURL(uploadedAudioUrl);
-                        }
-                        uploadedAudioUrl = URL.createObjectURL(wavBlob);
-                        error = null;
-                    } catch (err) {
-                        console.error('Error converting audio:', err);
-                        error = 'Failed to process audio file. Please try a different file.';
-                    }
-                };
-                reader.readAsArrayBuffer(file);
-            } else {
-                // Direct WAV file handling
-                if (uploadedAudioUrl) {
-                    URL.revokeObjectURL(uploadedAudioUrl);
-                }
-                uploadedAudioUrl = URL.createObjectURL(file);
-                error = null;
-            }
-        }
-    }
-
-    function formatSpeakerName(speaker: string) {
-        return speaker.replace('[S1]', 'Speaker 1').replace('[S2]', 'Speaker 2');
-    }
-
-    function startEditing(index: number) {
-        editingMessageIndex = index;
-        editText = messages[index].text;
-    }
-
-    function saveEdit() {
-        if (editingMessageIndex !== null) {
-            messages[editingMessageIndex].text = editText;
-            messages = [...messages]; // Trigger reactivity
-            editingMessageIndex = null;
-        }
-    }
-
-    function deleteMessage(index: number) {
-        messages = messages.filter((_, i) => i !== index);
-        editingMessageIndex = null;  // Reset editing state
-        updateAvailableSpeakers();
-    }
-
-    function toggleMessageControls(index: number) {
-        activeMessageControls = activeMessageControls === index ? null : index;
-    }
-
     async function handleGenerate() {
         if (messages.length === 0) return;
         
@@ -275,36 +151,14 @@
             formData.append('speed_factor', speedFactor.toString());
             
             // Add audio file if available (either uploaded or recorded)
-            const referenceAudioUrl = uploadedAudioUrl || recordedAudioUrl;
-            if (referenceAudioUrl) {
-                const response = await fetch(referenceAudioUrl);
+            if (uploadedAudioUrl) {
+                const response = await fetch(uploadedAudioUrl);
                 const blob = await response.blob();
-                
-                // Convert to WAV format with proper sample rate
-                const audioContext = new AudioContext();
-                const arrayBuffer = await blob.arrayBuffer();
-                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-                
-                // Ensure mono audio
-                let monoBuffer: AudioBuffer;
-                if (audioBuffer.numberOfChannels > 1) {
-                    const monoData = new Float32Array(audioBuffer.length);
-                    for (let i = 0; i < audioBuffer.length; i++) {
-                        let sum = 0;
-                        for (let channel = 0; channel < audioBuffer.numberOfChannels; channel++) {
-                            sum += audioBuffer.getChannelData(channel)[i];
-                        }
-                        monoData[i] = sum / audioBuffer.numberOfChannels;
-                    }
-                    monoBuffer = audioContext.createBuffer(1, audioBuffer.length, audioBuffer.sampleRate);
-                    monoBuffer.copyToChannel(monoData, 0);
-                } else {
-                    monoBuffer = audioBuffer;
-                }
-                
-                // Convert to WAV
-                const wavBlob = new Blob([audioBufferToWav(monoBuffer)], { type: 'audio/wav' });
-                formData.append('audio', wavBlob, 'reference.wav');
+                formData.append('audio', blob, 'reference.mp3');
+            } else if (recordedAudioUrl) {
+                const response = await fetch(recordedAudioUrl);
+                const blob = await response.blob();
+                formData.append('audio', blob, 'recorded.mp3');
             }
 
             const response = await fetch('http://localhost:8000/api/generate', {
@@ -338,7 +192,7 @@
 
         } catch (err) {
             console.error('Generation error:', err);
-            error = (err as Error).message || 'Failed to generate audio. Please try again.';
+            error = err.message || 'Failed to generate audio. Please try again.';
             if (audioUrl) {
                 URL.revokeObjectURL(audioUrl);
                 audioUrl = null;
@@ -352,57 +206,56 @@
         }
     }
 
-    // Helper function to convert AudioBuffer to WAV format
-    function audioBufferToWav(buffer: AudioBuffer): ArrayBuffer {
-        const numOfChan = buffer.numberOfChannels;
-        const length = buffer.length * numOfChan * 2;
-        const buffer2 = new ArrayBuffer(44 + length);
-        const view = new DataView(buffer2);
-        const channels = [];
-        let offset = 0;
-        let pos = 0;
+    async function startRecording() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            audioChunks = [];
 
-        // Write WAV header
-        setUint32(0x46464952);                         // "RIFF"
-        setUint32(36 + length);                        // file length - 8
-        setUint32(0x45564157);                         // "WAVE"
-        setUint32(0x20746d66);                         // "fmt " chunk
-        setUint32(16);                                 // length = 16
-        setUint16(1);                                  // PCM (uncompressed)
-        setUint16(numOfChan);
-        setUint32(buffer.sampleRate);
-        setUint32(buffer.sampleRate * 2 * numOfChan);  // avg. bytes/sec
-        setUint16(numOfChan * 2);                      // block-align
-        setUint16(16);                                 // 16-bit
-        setUint32(0x61746164);                         // "data" - chunk
-        setUint32(length);                             // chunk length
+            mediaRecorder.ondataavailable = (event) => {
+                audioChunks.push(event.data);
+            };
 
-        // Write interleaved data
-        for (let i = 0; i < buffer.numberOfChannels; i++) {
-            channels.push(buffer.getChannelData(i));
+            mediaRecorder.onstop = () => {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/mp3' });
+                if (recordedAudioUrl) {
+                    URL.revokeObjectURL(recordedAudioUrl);
+                }
+                recordedAudioUrl = URL.createObjectURL(audioBlob);
+            };
+
+            mediaRecorder.start();
+            isRecording = true;
+        } catch (err) {
+            console.error('Recording error:', err);
+            error = 'Failed to start recording. Please check your microphone permissions.';
         }
+    }
 
-        while (pos < buffer.length) {
-            for (let i = 0; i < numOfChan; i++) {
-                let sample = Math.max(-1, Math.min(1, channels[i][pos]));
-                sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
-                view.setInt16(44 + offset, sample, true);
-                offset += 2;
+    function stopRecording() {
+        if (mediaRecorder && isRecording) {
+            mediaRecorder.stop();
+            mediaRecorder.stream.getTracks().forEach(track => track.stop());
+            isRecording = false;
+        }
+    }
+
+    function handleFileUpload(event: Event) {
+        const input = event.target as HTMLInputElement;
+        const file = input.files?.[0];
+        
+        if (file) {
+            if (file.type !== 'audio/mp3' && file.type !== 'audio/mpeg') {
+                error = 'Please upload an MP3 file.';
+                return;
             }
-            pos++;
-        }
 
-        function setUint16(data: number) {
-            view.setUint16(pos, data, true);
-            pos += 2;
+            if (uploadedAudioUrl) {
+                URL.revokeObjectURL(uploadedAudioUrl);
+            }
+            uploadedAudioUrl = URL.createObjectURL(file);
+            error = null;
         }
-
-        function setUint32(data: number) {
-            view.setUint32(pos, data, true);
-            pos += 4;
-        }
-
-        return buffer2;
     }
 </script>
 
@@ -427,7 +280,7 @@
                                     <div class="message-header">
                                         <div class="bubble-speaker">{formatSpeakerName(message.speaker)}</div>
                                         <div class="menu-container">
-                                            <button class="menu-dots">
+                                            <button class="menu-dots" aria-label="Message options">
                                                 <svg width="14" height="14" viewBox="0 0 16 16">
                                                     <circle cx="8" cy="3" r="1.5" />
                                                     <circle cx="8" cy="8" r="1.5" />
@@ -435,8 +288,8 @@
                                                 </svg>
                                             </button>
                                             <div class="message-controls">
-                                                <button class="control-button" on:click={() => startEditing(i)}>edit</button>
-                                                <button class="control-button" on:click={() => deleteMessage(i)}>delete</button>
+                                                <button class="control-button" on:click={() => startEditing(i)} aria-label="Edit message">edit</button>
+                                                <button class="control-button" on:click={() => deleteMessage(i)} aria-label="Delete message">delete</button>
                                             </div>
                                         </div>
                                     </div>
