@@ -13,11 +13,11 @@ RUN apt-get update && apt-get install -y \
 # Install uv using the official installation script
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Copy requirements first for better caching
-COPY requirements.txt .
+# Copy pyproject.toml first for better caching
+COPY pyproject.toml .
 
 # Install Python dependencies using uv
-RUN uv pip sync requirements.txt
+RUN uv install
 
 # Copy the rest of the application
 COPY . .
@@ -29,4 +29,4 @@ RUN mkdir -p audio_files
 EXPOSE 8000
 
 # Command to run the application
-CMD ["uvicorn", "calling_model:app", "--host", "0.0.0.0", "--port", "8000"] 
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"] 
