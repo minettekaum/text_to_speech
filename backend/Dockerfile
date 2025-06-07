@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y \
 COPY pyproject.toml .
 
 # Install Python dependencies using uv
-RUN uv install
+RUN uv pip anstall
 
 # Copy the rest of the application
 COPY . .
