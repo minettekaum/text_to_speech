@@ -10,14 +10,16 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv using the official installation script
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+# Install uv using the official installation script and add to PATH
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
+    echo 'export PATH="/root/.cargo/bin:$PATH"' >> ~/.bashrc && \
+    . ~/.bashrc
 
 # Copy pyproject.toml first for better caching
 COPY pyproject.toml .
 
 # Install Python dependencies using uv
-RUN uv install
+RUN /root/.cargo/bin/uv install
 
 # Copy the rest of the application
 COPY . .
