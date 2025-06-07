@@ -12,14 +12,19 @@ RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy pyproject.toml first for better caching
-COPY pyproject.toml .
+# Copy dependency files first for better caching
+COPY pyproject.toml uv.lock ./
 
-# Install Python dependencies using uv
-RUN uv pip install --system -r pyproject.toml
+# Install dependencies
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-install-project
 
-# Copy the rest of the application
+# Copy the project into the image
 COPY . .
+
+# Sync the project
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked
 
 # Create directory for audio files
 RUN mkdir -p audio_files
