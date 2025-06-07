@@ -9,6 +9,7 @@ dependencies = [
     "fastapi[standard]>=0.115.12",
     "gradio>=5.33.0",
     "huggingface-hub>=0.32.1",
+    "pydantic>=2.11.5",
     "safetensors>=0.5.3",
     "soundfile>=0.13.1",
     "torch>=2.7.0",

@@ -138,32 +138,51 @@
             // Combine all messages into a single text, maintaining speaker labels
             const combinedText = messages.map(msg => `${msg.speaker}: ${msg.text}`).join('\n');
             
-            // First, prepare the form data
-            const formData = new FormData();
-            formData.append('text', combinedText);
-            
-            // Add all generation parameters
-            formData.append('max_new_tokens', maxNewTokens.toString());
-            formData.append('cfg_scale', cfgScale.toString());
-            formData.append('temperature', temperature.toString());
-            formData.append('top_p', topP.toString());
-            formData.append('cfg_filter_top_k', cfgFilterTopK.toString());
-            formData.append('speed_factor', speedFactor.toString());
-            
-            // Add audio file if available (either uploaded or recorded)
-            if (uploadedAudioUrl) {
-                const response = await fetch(uploadedAudioUrl);
-                const blob = await response.blob();
-                formData.append('audio', blob, 'reference.mp3');
-            } else if (recordedAudioUrl) {
-                const response = await fetch(recordedAudioUrl);
-                const blob = await response.blob();
-                formData.append('audio', blob, 'recorded.mp3');
+            // Define the request data type
+            interface RequestData {
+                text_input: string;
+                max_new_tokens: number;
+                cfg_scale: number;
+                temperature: number;
+                top_p: number;
+                cfg_filter_top_k: number;
+                speed_factor: number;
+                audio_prompt_input?: {
+                    sample_rate: number;
+                    audio_data: number[];
+                };
+            }
+
+            // Prepare the request data
+            const requestData: RequestData = {
+                text_input: combinedText,
+                max_new_tokens: maxNewTokens,
+                cfg_scale: cfgScale,
+                temperature: temperature,
+                top_p: topP,
+                cfg_filter_top_k: cfgFilterTopK,
+                speed_factor: speedFactor
+            };
+
+            // If there's an audio file, convert it to the format the backend expects
+            const referenceAudioUrl = uploadedAudioUrl || recordedAudioUrl;
+            if (referenceAudioUrl) {
+                const response = await fetch(referenceAudioUrl);
+                const arrayBuffer = await response.arrayBuffer();
+                const audioData = new Float32Array(arrayBuffer);
+                
+                requestData.audio_prompt_input = {
+                    sample_rate: 44100, // Default sample rate
+                    audio_data: Array.from(audioData)
+                };
             }
 
             const response = await fetch('http://localhost:8000/api/generate', {
                 method: 'POST',
-                body: formData
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestData)
             });
 
             if (!response.ok) {
@@ -171,7 +190,13 @@
                 throw new Error(errorData?.detail || 'Failed to generate audio');
             }
 
+            console.log('Response status:', response.status);
+            console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+
+            // Get the audio blob from the response
             const blob = await response.blob();
+            console.log('Received blob:', blob.type, blob.size);
+            
             if (blob.size === 0) {
                 throw new Error('Generated audio is empty');
             }
@@ -179,20 +204,32 @@
             // Set progress to 100% when generation is complete
             generationProgress = 100;
             
+            // Clean up any existing audio URL
             if (audioUrl) {
                 URL.revokeObjectURL(audioUrl);
             }
-            audioUrl = URL.createObjectURL(blob);
 
+            // Create a new URL for the audio blob and assign to the global audioUrl
+            audioUrl = URL.createObjectURL(blob);
+            console.log('Created audio URL:', audioUrl);
+
+            // Test the audio to make sure it loads correctly
             const audioTest = new Audio(audioUrl);
-            audioTest.onerror = () => {
+            audioTest.onerror = (e) => {
+                console.error('Audio loading error:', e);
                 error = 'Error loading the generated audio';
-                console.error('Audio loading error:', audioTest.error);
+            };
+            audioTest.onloadeddata = () => {
+                console.log('Audio loaded successfully');
+                error = null; // Clear any previous errors
+            };
+            audioTest.oncanplaythrough = () => {
+                console.log('Audio can play through');
             };
 
-        } catch (err) {
+        } catch (err: unknown) {
             console.error('Generation error:', err);
-            error = err.message || 'Failed to generate audio. Please try again.';
+            error = err instanceof Error ? err.message : 'Failed to generate audio. Please try again.';
             if (audioUrl) {
                 URL.revokeObjectURL(audioUrl);
                 audioUrl = null;
@@ -792,15 +829,6 @@
     @keyframes fadeIn {
         from { opacity: 0; transform: translateY(10px); }
         to { opacity: 1; transform: translateY(0); }
-    }
-
-    .speaker-label {
-        padding: 0.4rem 0.6rem;
-        border-radius: 6px;
-        font-size: 0.85rem;
-        font-weight: 500;
-        white-space: nowrap;
-        color: white;
     }
 
     /* Speaker colors */

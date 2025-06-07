@@ -1,28 +1,38 @@
-from typing import Union, Optional, Tuple
-from pathlib import Path
+import uuid
+import logging
+import sys
+
+
+
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-
-import time
+import uvicorn
 from pydantic import BaseModel
-import uuid
-
-import soundfile as sf
-import numpy as np
-from dia.model import Dia
-import logging
-import torch
 
 import argparse
 import tempfile
-import sys
-import uvicorn
+import time
+from typing import Union, Optional, Tuple, List
+from pathlib import Path
+
+import soundfile as sf
+import numpy as np
+import torch
+from dia.model import Dia
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+"""
+# Parse command line arguments
+parser = argparse.ArgumentParser(description="FastAPI server for Nari TTS")
+parser.add_argument("--device", type=str, help="Force device (e.g., 'cuda', 'mps', 'cpu')")
+parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to run the server on")
+parser.add_argument("--port", type=int, default=8000, help="Port to run the server on")
+args = parser.parse_args()
+"""
 app = FastAPI()
 
 # Configure CORS
@@ -40,12 +50,20 @@ AUDIO_DIR.mkdir(exist_ok=True)
 UPLOADS_DIR = Path("upload_files")
 UPLOADS_DIR.mkdir(exist_ok=True)
 
-# Initialize device
 if torch.cuda.is_available():
     device = torch.device("cuda")
 else:
     device = torch.device("cpu")
-
+"""
+# Initialize device
+if device: #if args.device:
+    device = torch.device(device) #device = torch.device(args.device)
+else:
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    else:
+        device = torch.device("cpu")
+"""
 logger.info(f"Using device: {device}")
 
 # Load Nari model and config
@@ -63,148 +81,104 @@ except Exception as e:
     logger.error(f"Error loading Nari model: {e}")
     raise
 
-async def process_audio_file(file: UploadFile) -> Tuple[np.ndarray, int]:
-    """Process uploaded audio file and return preprocessed audio data and sample rate."""
-    with tempfile.NamedTemporaryFile(mode="wb", suffix=".wav", delete=False) as f_audio:
-        temp_path = Path(f_audio.name)
-        try:
-            # Log file details
-            logger.debug(f"Processing audio file: {file.filename}")
-            content = await file.read()
-            f_audio.write(content)
-            f_audio.flush()  # Ensure all data is written
-            
-            # Read and preprocess audio data
-            try:
-                audio_data, sr = sf.read(str(temp_path))
-            except Exception as e:
-                # If soundfile fails, try using librosa as a fallback
-                try:
-                    import librosa
-                    audio_data, sr = librosa.load(str(temp_path), sr=None)
-                except ImportError:
-                    logger.error("librosa not installed. Please install it for better audio format support.")
-                    raise HTTPException(status_code=400, detail="Audio format not supported. Please use WAV, MP3, or FLAC format.")
-                except Exception as e2:
-                    logger.error(f"Both soundfile and librosa failed to read audio: {e2}")
-                    raise HTTPException(status_code=400, detail="Failed to process audio. Please ensure the file is a valid audio file.")
-            
-            # Basic audio preprocessing for consistency
-            # Convert to float32 in [-1, 1] range if integer type
-            if np.issubdtype(audio_data.dtype, np.integer):
-                max_val = np.iinfo(audio_data.dtype).max
-                audio_data = audio_data.astype(np.float32) / max_val
-            elif not np.issubdtype(audio_data.dtype, np.floating):
-                logger.warning(f"Unsupported audio dtype {audio_data.dtype}, attempting conversion")
-                audio_data = audio_data.astype(np.float32)
+class AudioPrompt(BaseModel):
+    sample_rate: int
+    audio_data: List[float]  # Convert numpy array to list for Pydantic
 
-            # Ensure mono (average channels if stereo)
-            if audio_data.ndim > 1:
-                if audio_data.shape[0] == 2:  # Assume (2, N)
-                    audio_data = np.mean(audio_data, axis=0)
-                elif audio_data.shape[1] == 2:  # Assume (N, 2)
-                    audio_data = np.mean(audio_data, axis=1)
-                else:
-                    logger.warning(f"Audio has unexpected shape {audio_data.shape}, taking first channel/axis")
-                    audio_data = audio_data[0] if audio_data.shape[0] < audio_data.shape[1] else audio_data[:, 0]
-                audio_data = np.ascontiguousarray(audio_data)
-
-            # Ensure audio is not empty
-            if len(audio_data) == 0:
-                raise HTTPException(status_code=400, detail="Audio file appears to be empty")
-
-            # Ensure audio is not too long (e.g., > 30 seconds at 44.1kHz)
-            max_samples = 30 * 44100
-            if len(audio_data) > max_samples:
-                logger.warning(f"Audio too long ({len(audio_data)} samples), truncating to {max_samples} samples")
-                audio_data = audio_data[:max_samples]
-
-            return audio_data, sr
-
-        except Exception as e:
-            logger.error(f"Error processing audio file: {e}")
-            if "Format not recognized" in str(e):
-                raise HTTPException(status_code=400, detail="Audio format not supported. Please use WAV, MP3, or FLAC format.")
-            raise HTTPException(status_code=400, detail=f"Failed to process audio: {str(e)}")
-        finally:
-            try:
-                temp_path.unlink()
-                logger.debug("Cleaned up temporary file")
-            except Exception as e:
-                logger.error(f"Error cleaning up temporary file: {e}")
+class GenerateRequest(BaseModel):
+    text_input: str
+    audio_prompt_input: Optional[AudioPrompt] = None
+    max_new_tokens: int = 1024
+    cfg_scale: float = 3.0
+    temperature: float = 1.3
+    top_p: float = 0.95
+    cfg_filter_top_k: int = 35
+    speed_factor: float = 0.94
 
 @app.post("/api/generate")
-async def generate_speech(
-    text: str = Form(...),
-    audio: UploadFile = File(None),
-    max_new_tokens: int = Form(1024),
-    cfg_scale: float = Form(3.0),
-    temperature: float = Form(1.3),
-    top_p: float = Form(0.95),
-    cfg_filter_top_k: int = Form(35),
-    speed_factor: float = Form(0.94)
-):
+async def run_inference(request: GenerateRequest):
     """
-    FastAPI endpoint for text-to-speech generation with optional audio prompt.
-    Uses improved audio processing from test_model.py.
+    Runs Nari inference using the globally loaded model and provided inputs.
+    Uses temporary files for text and audio prompt compatibility with inference.generate.
     """
-    if not text or text.isspace():
-        raise HTTPException(status_code=400, detail="Text input cannot be empty")
+    global model, device  # Access global model, config, device
 
-    # Parameter validation
-    if not (860 <= max_new_tokens <= 3072):
-        raise HTTPException(status_code=400, detail="max_new_tokens must be between 860 and 3072")
-    if not (1.0 <= temperature <= 1.5):
-        raise HTTPException(status_code=400, detail="temperature must be between 1.0 and 1.5")
-    if not (0.8 <= top_p <= 1.0):
-        raise HTTPException(status_code=400, detail="top_p must be between 0.8 and 1.0")
-    if not (1.0 <= cfg_scale <= 5.0):
-        raise HTTPException(status_code=400, detail="cfg_scale must be between 1.0 and 5.0")
-    if not (15 <= cfg_filter_top_k <= 50):
-        raise HTTPException(status_code=400, detail="cfg_filter_top_k must be between 15 and 50")
-    if not (0.8 <= speed_factor <= 1.0):
-        raise HTTPException(status_code=400, detail="speed_factor must be between 0.8 and 1.0")
+    if not request.text_input or request.text_input.isspace():
+        raise HTTPException(status_code=400, detail="Text input cannot be empty.")
 
+    temp_txt_file_path = None
+    temp_audio_prompt_path = None
     output_filepath = AUDIO_DIR / f"{int(time.time())}.wav"
-    audio_prompt = None
 
     try:
-        # Process audio prompt if provided
-        if audio:
-            logger.info("Processing audio prompt")
-            audio_prompt, _ = await process_audio_file(audio)
-            logger.debug(f"Audio prompt processed successfully: {audio_prompt.shape}")
-            # Ensure audio prompt is in the correct shape for the model
-            if audio_prompt is not None:
-                # Convert numpy array to PyTorch tensor and move to correct device
-                audio_prompt = torch.from_numpy(audio_prompt).to(device)
-                # Ensure the audio prompt is the correct length (1 second at 16kHz)
-                if len(audio_prompt) > 16000:
-                    audio_prompt = audio_prompt[:16000]
-                elif len(audio_prompt) < 16000:
-                    # Pad with zeros if too short
-                    padding = torch.zeros(16000 - len(audio_prompt), device=device)
-                    audio_prompt = torch.cat([audio_prompt, padding])
-                
-                # Take evenly spaced samples to get [9, 9] shape
-                indices = torch.linspace(0, len(audio_prompt)-1, 81).long()  # 9x9=81 samples
-                audio_prompt = audio_prompt[indices].reshape(9, 9)
+        prompt_path_for_generate = None
+        if request.audio_prompt_input is not None:
+            # Convert list back to numpy array
+            audio_data = np.array(request.audio_prompt_input.audio_data, dtype=np.float32)
+            sr = request.audio_prompt_input.sample_rate
+            
+            # Check if audio_data is valid
+            if audio_data is None or audio_data.size == 0 or audio_data.max() == 0:  # Check for silence/empty
+                logger.warning("Audio prompt seems empty or silent, ignoring prompt.")
+            else:
+                # Save prompt audio to a temporary WAV file
+                with tempfile.NamedTemporaryFile(mode="wb", suffix=".wav", delete=False) as f_audio:
+                    temp_audio_prompt_path = f_audio.name  # Store path for cleanup
 
-        # Generate audio
+                    # Basic audio preprocessing for consistency
+                    # Convert to float32 in [-1, 1] range if integer type
+                    if np.issubdtype(audio_data.dtype, np.integer):
+                        max_val = np.iinfo(audio_data.dtype).max
+                        audio_data = audio_data.astype(np.float32) / max_val
+                    elif not np.issubdtype(audio_data.dtype, np.floating):
+                        logger.warning(f"Unsupported audio prompt dtype {audio_data.dtype}, attempting conversion.")
+                        # Attempt conversion, might fail for complex types
+                        try:
+                            audio_data = audio_data.astype(np.float32)
+                        except Exception as conv_e:
+                            raise HTTPException(status_code=400, detail=f"Failed to convert audio prompt to float32: {conv_e}")
+
+                    # Ensure mono (average channels if stereo)
+                    if audio_data.ndim > 1:
+                        if audio_data.shape[0] == 2:  # Assume (2, N)
+                            audio_data = np.mean(audio_data, axis=0)
+                        elif audio_data.shape[1] == 2:  # Assume (N, 2)
+                            audio_data = np.mean(audio_data, axis=1)
+                        else:
+                            logger.warning(f"Audio prompt has unexpected shape {audio_data.shape}, taking first channel/axis.")
+                            audio_data = audio_data[0] if audio_data.shape[0] < audio_data.shape[1] else audio_data[:, 0]
+                        audio_data = np.ascontiguousarray(audio_data)  # Ensure contiguous after slicing/mean
+
+                    # Write using soundfile
+                    try:
+                        sf.write(temp_audio_prompt_path, audio_data, sr, subtype="FLOAT")  # Explicitly use FLOAT subtype
+                        prompt_path_for_generate = temp_audio_prompt_path
+                        logger.info(f"Created temporary audio prompt file: {temp_audio_prompt_path} (orig sr: {sr})")
+                    except Exception as write_e:
+                        logger.error(f"Error writing temporary audio file: {write_e}")
+                        raise HTTPException(status_code=400, detail=f"Failed to save audio prompt: {write_e}")
+
+        # 3. Run Generation
+
         start_time = time.time()
+
+        # Use torch.inference_mode() context manager for the generation call
         with torch.inference_mode():
             output_audio_np = model.generate(
-                text,
-                max_tokens=max_new_tokens,
-                cfg_scale=cfg_scale,
-                temperature=temperature,
-                top_p=top_p,
-                cfg_filter_top_k=cfg_filter_top_k,
+                request.text_input,
+                max_tokens=request.max_new_tokens,
+                cfg_scale=request.cfg_scale,
+                temperature=request.temperature,
+                top_p=request.top_p,
+                cfg_filter_top_k=request.cfg_filter_top_k,
                 use_torch_compile=False,
-                audio_prompt=audio_prompt,
+                audio_prompt=prompt_path_for_generate,
             )
-        logger.info(f"Generation finished in {time.time() - start_time:.2f} seconds")
 
+        end_time = time.time()
+        logger.info(f"Generation finished in {end_time - start_time:.2f} seconds.")
+
+        # 4. Convert Codes to Audio
         if output_audio_np is None:
             raise HTTPException(status_code=500, detail="Model generated no output")
 
@@ -213,7 +187,7 @@ async def generate_speech(
 
         # Apply speed factor
         original_len = len(output_audio_np)
-        speed_factor = max(0.1, min(speed_factor, 5.0))  # Safety bounds
+        speed_factor = max(0.1, min(request.speed_factor, 5.0))  # Safety bounds
         target_len = int(original_len / speed_factor)
         
         if target_len != original_len and target_len > 0:
@@ -237,22 +211,26 @@ async def generate_speech(
         )
 
     except Exception as e:
-        logger.error(f"Error during generation: {e}")
+        logger.error(f"Error during inference: {e}")
         if isinstance(e, HTTPException):
             raise e
         raise HTTPException(status_code=500, detail=str(e))
 
     finally:
-        # Clean up old files
-        try:
-            for file in AUDIO_DIR.glob("*.wav"):
-                if file != output_filepath and file.stat().st_mtime < (time.time() - 3600):
-                    file.unlink()
-            for file in UPLOADS_DIR.glob("*"):
-                if file.stat().st_mtime < (time.time() - 3600):
-                    file.unlink()
-        except Exception as e:
-            logger.error(f"Error during cleanup: {e}")
+        # 5. Cleanup Temporary Files defensively
+        if temp_txt_file_path and Path(temp_txt_file_path).exists():
+            try:
+                Path(temp_txt_file_path).unlink()
+                logger.debug(f"Deleted temporary text file: {temp_txt_file_path}")
+            except OSError as e:
+                logger.warning(f"Error deleting temporary text file {temp_txt_file_path}: {e}")
+        if temp_audio_prompt_path and Path(temp_audio_prompt_path).exists():
+            try:
+                Path(temp_audio_prompt_path).unlink()
+                logger.debug(f"Deleted temporary audio prompt file: {temp_audio_prompt_path}")
+            except OSError as e:
+                logger.warning(f"Error deleting temporary audio prompt file {temp_audio_prompt_path}: {e}")
+
 
 @app.get("/api/health")
 async def health_check():
@@ -266,8 +244,9 @@ def read_root():
 def read_item(item_id: int, q: Union[str, None] = None):
     return {"item_id": item_id, "q": q}
 
+'''
 if __name__ == "__main__":
-    # Only parse arguments when running the script directly
+        # Only parse arguments when running the script directly
     parser = argparse.ArgumentParser(description="FastAPI server for Nari TTS")
     parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to run the server on")
     parser.add_argument("--port", type=int, default=8000, help="Port to run the server on")
@@ -284,3 +263,4 @@ if __name__ == "__main__":
                                   device=device)
 
     uvicorn.run(app, host=args.host, port=args.port)
+'''
