@@ -1,5 +1,8 @@
 FROM python:3.11-slim
 
+# Copy uv binary from the official distroless image
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
 # Set working directory
 WORKDIR /app
 
@@ -7,13 +10,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     libsndfile1 \
     gcc \
-    curl \
     && rm -rf /var/lib/apt/lists/*
-
-# Install uv using the official installation script and add to PATH
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
-    ls -la /usr/local/bin/uv && \
-    uv --version
 
 # Copy pyproject.toml first for better caching
 COPY pyproject.toml .
