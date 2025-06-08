@@ -7,7 +7,6 @@ requires-python = ">=3.10"
 dependencies = [
     "descript-audio-codec>=1.0.0",
     "fastapi[standard]>=0.115.12",
-    "gradio>=5.33.0",
     "huggingface-hub>=0.32.1",
     "pydantic>=2.11.5",
     "safetensors>=0.5.3",
