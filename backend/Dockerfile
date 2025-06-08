@@ -12,25 +12,25 @@ RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy dependency files for better caching
+# Copy dependency files first for better caching
 COPY pyproject.toml uv.lock ./
 
-# Install dependencies with UV
+# Install dependencies
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-install-project
 
-# Copy the backend folder into the container
+# Copy the project into the image
 COPY . .
 
-# Sync the project dependencies
+# Sync the project
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked
 
 # Create directory for audio files
 RUN mkdir -p audio_files
 
-# Expose the application port
+# Expose the port the app runs on
 EXPOSE 8000
 
 # Command to run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"] 
