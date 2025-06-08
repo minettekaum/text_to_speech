@@ -33,4 +33,4 @@ RUN mkdir -p audio_files
 EXPOSE 8000
 
 # Command to run the application
-CMD ["/app/.venv/bin/fastapi", "run", "app/main.py", "--port", "8000", "--host", "0.0.0.0"]
+CMD ["/app/.venv/bin/fastapi", "run", "main.py", "--port", "8000", "--host", "0.0.0.0"]
