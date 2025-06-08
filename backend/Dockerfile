@@ -13,14 +13,14 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy dependency files for better caching
-COPY backend/pyproject.toml backend/uv.lock ./
+COPY pyproject.toml uv.lock ./
 
 # Install dependencies with UV
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-install-project
 
 # Copy the backend folder into the container
-COPY backend/ ./backend
+COPY . .
 
 # Sync the project dependencies
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -33,4 +33,4 @@ RUN mkdir -p audio_files
 EXPOSE 8000
 
 # Command to run the application
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
