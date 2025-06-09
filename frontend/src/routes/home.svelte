@@ -168,18 +168,34 @@
             const referenceAudioUrl = uploadedAudioUrl || recordedAudioUrl;
             if (referenceAudioUrl) {
                 try {
+                    console.log('Starting audio processing for:', referenceAudioUrl);
+                    
                     // Create AudioContext
                     const audioContext = new AudioContext();
+                    console.log('AudioContext created');
                     
                     // First convert the audio to a blob
+                    console.log('Fetching audio file...');
                     const response = await fetch(referenceAudioUrl);
+                    if (!response.ok) {
+                        throw new Error(`Failed to fetch audio file: ${response.status} ${response.statusText}`);
+                    }
                     const blob = await response.blob();
+                    console.log('Audio blob created:', blob.type, blob.size);
                     
                     // Convert blob to array buffer
+                    console.log('Converting blob to array buffer...');
                     const arrayBuffer = await blob.arrayBuffer();
+                    console.log('Array buffer created, size:', arrayBuffer.byteLength);
                     
                     // Decode the audio data
+                    console.log('Decoding audio data...');
                     const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                    console.log('Audio decoded successfully:', {
+                        sampleRate: audioBuffer.sampleRate,
+                        duration: audioBuffer.duration,
+                        numberOfChannels: audioBuffer.numberOfChannels
+                    });
                     
                     // Get the Float32Array from the first channel and convert to regular array
                     const channelData = audioBuffer.getChannelData(0);
@@ -188,28 +204,47 @@
                     const normalizedData = Array.from(channelData).map(x => 
                         Math.max(-1, Math.min(1, x)) // Clamp values between -1 and 1
                     );
+
+                    // Resize the audio data to match the expected tensor dimensions
+                    const targetLength = 3072; // The expected size from the error message
+                    let resizedData;
+                    
+                    if (normalizedData.length > targetLength) {
+                        // If data is too long, take a sample from the middle
+                        const start = Math.floor((normalizedData.length - targetLength) / 2);
+                        resizedData = normalizedData.slice(start, start + targetLength);
+                    } else if (normalizedData.length < targetLength) {
+                        // If data is too short, pad with zeros
+                        resizedData = new Array(targetLength).fill(0);
+                        resizedData.splice(0, normalizedData.length, ...normalizedData);
+                    } else {
+                        resizedData = normalizedData;
+                    }
                     
                     requestData.audio_prompt_input = {
                         sample_rate: audioBuffer.sampleRate,
-                        audio_data: normalizedData
+                        audio_data: resizedData
                     };
                     
                     // Close the audio context
                     await audioContext.close();
                     
-                    console.log('Audio processing successful:', {
+                    console.log('Audio processing completed successfully:', {
                         sampleRate: audioBuffer.sampleRate,
-                        dataLength: normalizedData.length,
-                        firstFewSamples: normalizedData.slice(0, 5)
+                        originalLength: normalizedData.length,
+                        resizedLength: resizedData.length,
+                        firstFewSamples: resizedData.slice(0, 5)
                     });
-                } catch (audioError) {
-                    console.error('Error processing audio:', audioError);
-                    error = 'Failed to process audio file. Please try a different file.';
+                } catch (audioError: unknown) {
+                    console.error('Detailed audio processing error:', audioError);
+                    error = `Failed to process audio file: ${audioError instanceof Error ? audioError.message : 'Unknown error'}. Please try a different file.`;
+                    isProcessing = false;
                     return;
                 }
             }
 
             const response = await fetch('https://gothic-sara-ann-challenge-8bad5bca.koyeb.app/api/generate', {
+            //const response = await fetch('http://127.0.0.1:8000/api/generate', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -219,6 +254,11 @@
 
             if (!response.ok) {
                 const errorData = await response.json().catch(() => null);
+                console.error('Server response error:', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    errorData: errorData
+                });
                 throw new Error(errorData?.detail || 'Failed to generate audio');
             }
 
@@ -227,7 +267,10 @@
 
             // Get the audio blob from the response
             const blob = await response.blob();
-            console.log('Received blob:', blob.type, blob.size);
+            console.log('Received audio blob:', {
+                type: blob.type,
+                size: blob.size
+            });
             
             if (blob.size === 0) {
                 throw new Error('Generated audio is empty');
@@ -252,7 +295,7 @@
                 error = 'Error loading the generated audio';
             };
             audioTest.onloadeddata = () => {
-                console.log('Audio loaded successfully');
+                console.log('Audio loaded successfully, duration:', audioTest.duration);
                 error = null; // Clear any previous errors
             };
             audioTest.oncanplaythrough = () => {

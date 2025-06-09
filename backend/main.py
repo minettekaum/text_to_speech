@@ -121,6 +121,7 @@ async def run_inference(request: GenerateRequest):
             if audio_data is None or audio_data.size == 0 or audio_data.max() == 0:  # Check for silence/empty
                 logger.warning("Audio prompt seems empty or silent, ignoring prompt.")
             else:
+                logger.info(f"Processing audio prompt: shape={audio_data.shape}, sample_rate={sr}, dtype={audio_data.dtype}")
                 # Save prompt audio to a temporary WAV file
                 with tempfile.NamedTemporaryFile(mode="wb", suffix=".wav", delete=False) as f_audio:
                     temp_audio_prompt_path = f_audio.name  # Store path for cleanup
@@ -153,7 +154,7 @@ async def run_inference(request: GenerateRequest):
                     try:
                         sf.write(temp_audio_prompt_path, audio_data, sr, subtype="FLOAT")  # Explicitly use FLOAT subtype
                         prompt_path_for_generate = temp_audio_prompt_path
-                        logger.info(f"Created temporary audio prompt file: {temp_audio_prompt_path} (orig sr: {sr})")
+                        logger.info(f"Created temporary audio prompt file: {temp_audio_prompt_path} (orig sr: {sr}, shape: {audio_data.shape}, max: {audio_data.max():.3f}, min: {audio_data.min():.3f})")
                     except Exception as write_e:
                         logger.error(f"Error writing temporary audio file: {write_e}")
                         raise HTTPException(status_code=400, detail=f"Failed to save audio prompt: {write_e}")
@@ -164,6 +165,7 @@ async def run_inference(request: GenerateRequest):
 
         # Use torch.inference_mode() context manager for the generation call
         with torch.inference_mode():
+            logger.info(f"Starting generation with audio prompt: {prompt_path_for_generate}")
             output_audio_np = model.generate(
                 request.text_input,
                 max_tokens=request.max_new_tokens,
@@ -174,6 +176,7 @@ async def run_inference(request: GenerateRequest):
                 use_torch_compile=False,
                 audio_prompt=prompt_path_for_generate,
             )
+            logger.info(f"Generation completed. Output shape: {output_audio_np.shape if output_audio_np is not None else None}")
 
         end_time = time.time()
         logger.info(f"Generation finished in {end_time - start_time:.2f} seconds.")
