@@ -167,17 +167,49 @@
             // If there's an audio file, convert it to the format the backend expects
             const referenceAudioUrl = uploadedAudioUrl || recordedAudioUrl;
             if (referenceAudioUrl) {
-                const response = await fetch(referenceAudioUrl);
-                const arrayBuffer = await response.arrayBuffer();
-                const audioData = new Float32Array(arrayBuffer);
-                
-                requestData.audio_prompt_input = {
-                    sample_rate: 44100, // Default sample rate
-                    audio_data: Array.from(audioData)
-                };
+                try {
+                    // Create AudioContext
+                    const audioContext = new AudioContext();
+                    
+                    // First convert the audio to a blob
+                    const response = await fetch(referenceAudioUrl);
+                    const blob = await response.blob();
+                    
+                    // Convert blob to array buffer
+                    const arrayBuffer = await blob.arrayBuffer();
+                    
+                    // Decode the audio data
+                    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                    
+                    // Get the Float32Array from the first channel and convert to regular array
+                    const channelData = audioBuffer.getChannelData(0);
+                    
+                    // Ensure the data is in the correct range (-1 to 1)
+                    const normalizedData = Array.from(channelData).map(x => 
+                        Math.max(-1, Math.min(1, x)) // Clamp values between -1 and 1
+                    );
+                    
+                    requestData.audio_prompt_input = {
+                        sample_rate: audioBuffer.sampleRate,
+                        audio_data: normalizedData
+                    };
+                    
+                    // Close the audio context
+                    await audioContext.close();
+                    
+                    console.log('Audio processing successful:', {
+                        sampleRate: audioBuffer.sampleRate,
+                        dataLength: normalizedData.length,
+                        firstFewSamples: normalizedData.slice(0, 5)
+                    });
+                } catch (audioError) {
+                    console.error('Error processing audio:', audioError);
+                    error = 'Failed to process audio file. Please try a different file.';
+                    return;
+                }
             }
 
-            const response = await fetch('http://localhost:8000/api/generate', {
+            const response = await fetch('https://gothic-sara-ann-challenge-8bad5bca.koyeb.app/api/generate', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
