@@ -369,6 +369,31 @@
             error = null;
         }
     }
+
+    function loadExampleDialogue1() {
+        messages = [
+            { speaker: '[S1]', text: 'Hey, how was your weekend?' },
+            { speaker: '[S2]', text: 'Amazing! Went hiking in the mountains. The view was breathtaking!' },
+            { speaker: '[S1]', text: 'That sounds incredible! I need to get out more.' },
+            { speaker: '[S2]', text: 'You should join me next time! The trail I found is perfect for beginners (laughs)' }
+        ];
+        updateAvailableSpeakers();
+    }
+
+    function loadExampleDialogue2() {
+        messages = [
+            { speaker: '[S1]', text: 'I could really use a French coffee right now.' },
+            { speaker: '[S2]', text: 'Oh! I found this charming French café around the corner. So authentic!' },
+            { speaker: '[S1]', text: 'Really? Do they have fresh pastries?' },
+            { speaker: '[S2]', text: 'Yes! Their chocolate croissants are amazing! And the owner is from Paris (humming)' }
+        ];
+        updateAvailableSpeakers();
+    }
+
+    function emptyChat() {
+        messages = [];
+        updateAvailableSpeakers();
+    }
 </script>
 
 <main class="container">
@@ -461,6 +486,17 @@
                                     <option value={effect}>{effect}</option>
                                 {/each}
                             </select>
+                            <div class="example-buttons">
+                                <button class="example-button" on:click={loadExampleDialogue1}>
+                                    Example: Hiking Chat
+                                </button>
+                                <button class="example-button" on:click={loadExampleDialogue2}>
+                                    Example: Coffee Chat
+                                </button>
+                                <button class="example-button" on:click={emptyChat}>
+                                    Empty Chat
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -782,7 +818,8 @@
         grid-template-columns: minmax(300px, 1.2fr) minmax(250px, 1fr);
         gap: 2rem;
         margin-bottom: 1rem;
-        align-items: start;
+        align-items: stretch;
+        min-height: 500px;
     }
 
     .text-input-section {
@@ -798,7 +835,7 @@
         display: flex;
         flex-direction: column;
         height: 100%;
-        min-height: 200px;
+        min-height: calc(200px + 180px + 3rem);
         border: 1px solid #e5e7eb;
     }
 
@@ -1037,12 +1074,19 @@
         border: none;
         border-radius: 8px;
         font-size: 0.95rem;
+        font-family: inherit;
         resize: none;
         transition: all 0.2s ease;
         background: transparent;
         min-height: 20px;
         max-height: 120px;
         line-height: 1.4;
+    }
+
+    textarea::placeholder {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+        color: #666;
+        opacity: 0.8;
     }
 
     textarea:focus {
@@ -1241,6 +1285,8 @@ audio {
 
     .effect-controls {
         display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
         padding: 0;
     }
 
@@ -1275,13 +1321,37 @@ audio {
         color: #333;
     }
 
+    .example-buttons {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 0.25rem;
+    }
+
+    .example-button {
+        flex: 1;
+        padding: 0.4rem;
+        background: #f5f5f5;
+        border: none;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        color: #666;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .example-button:hover {
+        background: #efefef;
+        color: #333;
+    }
+
     .generation-settings {
     background: #fcfcfc;
     border-radius: 16px;
     padding: 1rem;
     position: sticky;
     top: 2rem;
-    height: calc(200px + 0.5rem + 180px);
+    height: auto;
+    min-height: calc(200px + 180px + 3rem);  /* Matches the chat area height */
     display: flex;
     flex-direction: column;
     border: 1px solid #e5e7eb;
@@ -1295,6 +1365,7 @@ audio {
     padding-right: 0.25rem;
     overflow: visible;
     position: relative;
+    gap: 1.5rem;
 }
 
 .parameter-control {
@@ -1493,6 +1564,23 @@ audio {
     .download-button svg {
         width: 16px;
         height: 16px;
+    }
+    .empty-chat-button {
+        width: 100%;
+        padding: 0.4rem;
+        background: #fee2e2;
+        border: none;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        color: #dc2626;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        margin-top: 0.5rem;
+    }
+
+    .empty-chat-button:hover {
+        background: #fecaca;
+        color: #b91c1c;
     }
 
 </style> 

@@ -29,5 +29,5 @@ RUN pnpm build
 
 EXPOSE 5173
 
-# Command to run the application
-CMD ["pnpm", "start"]
+# Command to run the application using pnpm preview
+CMD ["pnpm", "preview", "--host", "0.0.0.0"]
