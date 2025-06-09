@@ -704,9 +704,31 @@
                 {#if error}
                     <p class="error-message">{error}</p>
                 {:else if audioUrl}
-                    <audio controls src={audioUrl}>
-                        Your browser does not support the audio element.
-                    </audio>
+                    <div class="audio-controls">
+                        <audio controls src={audioUrl}>
+                            Your browser does not support the audio element.
+                        </audio>
+                        <button 
+                            class="download-button"
+                            on:click={() => {
+                                if (!audioUrl) return;
+                                const link = document.createElement('a');
+                                link.href = audioUrl;
+                                link.download = `generated_audio_${new Date().getTime()}.wav`;
+                                document.body.appendChild(link);
+                                link.click();
+                                document.body.removeChild(link);
+                            }}
+                            title="Download audio"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="7 10 12 15 17 10"/>
+                                <line x1="12" y1="15" x2="12" y2="3"/>
+                            </svg>
+                            Download
+                        </button>
+                    </div>
                 {:else}
                     <p class="placeholder-text">Your generated audio will appear here</p>
                 {/if}
@@ -1441,5 +1463,36 @@ audio {
         margin-right: 0.4rem;
     }
 
+    .audio-controls {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1rem;
+        width: 100%;
+    }
+
+    .download-button {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: #333;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 0.75rem 1.25rem;
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .download-button:hover {
+        background: #222;
+        transform: translateY(-1px);
+    }
+
+    .download-button svg {
+        width: 16px;
+        height: 16px;
+    }
 
 </style> 
