@@ -699,7 +699,7 @@
             </button>
         </div>
 
-        <div class="output-container">
+        <div class="audio-input-section">
             <h3>Generated Audio</h3>
             <div class="audio-controls">
                 <div class="audio-preview-container">
