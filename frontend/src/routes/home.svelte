@@ -8,8 +8,6 @@
     let currentInput = '';
     let availableSpeakers: string[] = ['[S1]'];
     let selectedSpeaker = '[S1]';
-    let maxSpeakerNumber = 1;  // Track the highest speaker number seen
-    let inputText = '';
     let audioUrl: string | null = null;
     let isProcessing = false;
     let selectedEffect = '';
@@ -27,15 +25,12 @@
     let topP = 0.9;          // Default middle value
     let cfgFilterTopK = 32;   // Default middle value
     let speedFactor = 0.9;    // Default middle value
-    let showAdvancedSettings = false;
 
     let generationProgress = 0;
     let progressInterval: number;
 
     let editingMessageIndex: number | null = null;
     let editText = '';
-
-    let activeMessageControls: number | null = null;
 
     const soundEffects = [
         'burps',
@@ -80,13 +75,11 @@
             // First message
             availableSpeakers = ['[S1]'];
             selectedSpeaker = '[S1]';
-            maxSpeakerNumber = 1;
             return;
         }
 
         // After first message, always make both [S1] and [S2] available
         availableSpeakers = ['[S1]', '[S2]'];
-        maxSpeakerNumber = 2;
         
         // Keep the current speaker selected if it's valid, otherwise default to [S1]
         if (!availableSpeakers.includes(selectedSpeaker)) {
@@ -168,34 +161,21 @@
             const referenceAudioUrl = uploadedAudioUrl || recordedAudioUrl;
             if (referenceAudioUrl) {
                 try {
-                    console.log('Starting audio processing for:', referenceAudioUrl);
-                    
                     // Create AudioContext
                     const audioContext = new AudioContext();
-                    console.log('AudioContext created');
                     
                     // First convert the audio to a blob
-                    console.log('Fetching audio file...');
                     const response = await fetch(referenceAudioUrl);
                     if (!response.ok) {
                         throw new Error(`Failed to fetch audio file: ${response.status} ${response.statusText}`);
                     }
                     const blob = await response.blob();
-                    console.log('Audio blob created:', blob.type, blob.size);
                     
                     // Convert blob to array buffer
-                    console.log('Converting blob to array buffer...');
                     const arrayBuffer = await blob.arrayBuffer();
-                    console.log('Array buffer created, size:', arrayBuffer.byteLength);
                     
                     // Decode the audio data
-                    console.log('Decoding audio data...');
                     const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-                    console.log('Audio decoded successfully:', {
-                        sampleRate: audioBuffer.sampleRate,
-                        duration: audioBuffer.duration,
-                        numberOfChannels: audioBuffer.numberOfChannels
-                    });
                     
                     // Get the Float32Array from the first channel and convert to regular array
                     const channelData = audioBuffer.getChannelData(0);
@@ -229,12 +209,6 @@
                     // Close the audio context
                     await audioContext.close();
                     
-                    console.log('Audio processing completed successfully:', {
-                        sampleRate: audioBuffer.sampleRate,
-                        originalLength: normalizedData.length,
-                        resizedLength: resizedData.length,
-                        firstFewSamples: resizedData.slice(0, 5)
-                    });
                 } catch (audioError: unknown) {
                     console.error('Detailed audio processing error:', audioError);
                     error = `Failed to process audio file: ${audioError instanceof Error ? audioError.message : 'Unknown error'}. Please try a different file.`;
@@ -262,15 +236,8 @@
                 throw new Error(errorData?.detail || 'Failed to generate audio');
             }
 
-            console.log('Response status:', response.status);
-            console.log('Response headers:', Object.fromEntries(response.headers.entries()));
-
             // Get the audio blob from the response
             const blob = await response.blob();
-            console.log('Received audio blob:', {
-                type: blob.type,
-                size: blob.size
-            });
             
             if (blob.size === 0) {
                 throw new Error('Generated audio is empty');
@@ -286,7 +253,6 @@
 
             // Create a new URL for the audio blob and assign to the global audioUrl
             audioUrl = URL.createObjectURL(blob);
-            console.log('Created audio URL:', audioUrl);
 
             // Test the audio to make sure it loads correctly
             const audioTest = new Audio(audioUrl);
@@ -295,11 +261,7 @@
                 error = 'Error loading the generated audio';
             };
             audioTest.onloadeddata = () => {
-                console.log('Audio loaded successfully, duration:', audioTest.duration);
                 error = null; // Clear any previous errors
-            };
-            audioTest.oncanplaythrough = () => {
-                console.log('Audio can play through');
             };
 
         } catch (err: unknown) {
@@ -840,15 +802,15 @@
     }
 
     .frame-header {
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid #eee;
-    margin-bottom: 0.35rem;
-}
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid #eee;
+        margin-bottom: 0.35rem;
+    }
 
     .frame-header h3 {
-    font-size: 0.9rem;
-    margin: 0;
-}
+        font-size: 0.9rem;
+        margin: 0;
+    }
 
     .helper-text {
         font-size: 0.8rem;
@@ -926,16 +888,15 @@
         background: none;
         border: none;
         color: #666;
-        padding: 0.2rem 0.5rem;
-        font-size: 0.8rem;
+        padding: 0;
+        font-size: 0.7rem;
         cursor: pointer;
-        text-align: left;
-        border-radius: 3px;
-        white-space: nowrap;
+        opacity: 0.7;
     }
 
     .control-button:hover {
-        background: #f5f5f5;
+        opacity: 1;
+        text-decoration: underline;
     }
 
     .bubble-speaker {
@@ -974,7 +935,6 @@
         color: #ec4899;
     }
 
-    /* Dropdown colors matching speakers */
     .speaker-select option[value="[S1]"] {
         color: #6366f1;
     }
@@ -1194,6 +1154,12 @@
         margin: 0;
     }
 
+    audio {
+        width: 100%;
+        max-width: 500px;
+        height: 36px;
+    }
+
     .controls {
         padding: 0 0 2rem 0;
     }
@@ -1248,34 +1214,22 @@
     }
 
     .output-audio {
-    background: #fcfcfc;
-    border-radius: 16px;
-    padding: 1rem;
-    min-height: 60px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    border: 1px solid #e5e7eb;
-}
+        background: #fcfcfc;
+        border-radius: 16px;
+        padding: 1rem;
+        min-height: 60px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        border: 1px solid #e5e7eb;
+    }
 
-.error-message {
-    color: #e53e3e;
-    font-weight: 500;
-    margin: 0;
-    font-size: 0.9rem;
-}
-
-audio {
-    width: 100%;
-    max-width: 500px;
-    height: 36px;
-}
-
-.placeholder-text {
-    color: #666;
-    margin: 0;
-    font-size: 0.9rem;
-}
+    .error-message {
+        color: #e53e3e;
+        font-weight: 500;
+        margin: 0;
+        font-size: 0.9rem;
+    }
 
     .placeholder-text {
         color: #666;
@@ -1345,43 +1299,48 @@ audio {
     }
 
     .generation-settings {
-    background: #fcfcfc;
-    border-radius: 16px;
-    padding: 1rem;
-    position: sticky;
-    top: 2rem;
-    height: auto;
-    min-height: calc(200px + 180px + 3rem);  /* Matches the chat area height */
-    display: flex;
-    flex-direction: column;
-    border: 1px solid #e5e7eb;
-}
+        background: #fcfcfc;
+        border-radius: 16px;
+        padding: 1rem;
+        position: sticky;
+        top: 2rem;
+        height: auto;
+        min-height: calc(200px + 180px + 3rem);
+        display: flex;
+        flex-direction: column;
+        border: 1px solid #e5e7eb;
+    }
 
-.settings-panel {
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    flex: 1;
-    padding-right: 0.25rem;
-    overflow: visible;
-    position: relative;
-    gap: 1.5rem;
-}
+    .side-controls {
+        display: flex;
+        flex-direction: column;
+    }
 
-.parameter-control {
-    margin-bottom: 0;
-    flex-shrink: 0;
-    padding: 0.25rem 0;
-    position: relative;
-}
+    .settings-panel {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        flex: 1;
+        padding-right: 0.25rem;
+        overflow: visible;
+        position: relative;
+        gap: 1.5rem;
+    }
 
-.parameter-control label {
-    font-size: 0.85rem;
-    margin-bottom: 0.35rem;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
+    .parameter-control {
+        margin-bottom: 0;
+        flex-shrink: 0;
+        padding: 0.25rem 0;
+        position: relative;
+    }
+
+    .parameter-control label {
+        font-size: 0.85rem;
+        margin-bottom: 0.35rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
 
     .tooltip-container {
         position: relative;
@@ -1427,12 +1386,6 @@ audio {
         display: block;
     }
 
-    .generation-settings h3 {
-        font-size: 0.9rem;
-        margin: 0;
-        font-weight: 500;
-    }
-
     .parameter-control input[type="range"] {
         width: 100%;
         height: 2px;
@@ -1456,9 +1409,28 @@ audio {
         transform: scale(1.2);
     }
 
-    .side-controls {
+    .download-button {
         display: flex;
-        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+        background: #333;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 0.75rem 1.25rem;
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .download-button:hover {
+        background: #222;
+        transform: translateY(-1px);
+    }
+
+    .download-button svg {
+        width: 16px;
+        height: 16px;
     }
 
     @media (max-width: 1200px) {
@@ -1502,68 +1474,4 @@ audio {
             max-height: 150px;
         }
     }
-
-    .message[data-speaker="[S2]"] .message-controls {
-        justify-content: flex-start;
-    }
-
-    .control-button {
-        background: none;
-        border: none;
-        color: #666;
-        padding: 0;
-        font-size: 0.7rem;
-        cursor: pointer;
-        opacity: 0.7;
-    }
-
-    .control-button:hover {
-        opacity: 1;
-        text-decoration: underline;
-    }
-
-    .edit-input {
-        width: 95%;
-        padding: 0.2rem 0.3rem 0.2rem 0.2rem;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        font-size: 0.9rem;
-        font-family: inherit;
-        display: block;
-        margin: 0 auto;
-        margin-right: 0.4rem;
-    }
-
-    .audio-controls {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 1rem;
-        width: 100%;
-    }
-
-    .download-button {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        background: #333;
-        color: white;
-        border: none;
-        border-radius: 8px;
-        padding: 0.75rem 1.25rem;
-        font-size: 0.9rem;
-        cursor: pointer;
-        transition: all 0.2s ease;
-    }
-
-    .download-button:hover {
-        background: #222;
-        transform: translateY(-1px);
-    }
-
-    .download-button svg {
-        width: 16px;
-        height: 16px;
-    }
-
 </style> 
