@@ -668,11 +668,9 @@
                 <div class="audio-preview-container">
                     {#if uploadedAudioUrl || recordedAudioUrl}
                         <div class="audio-preview">
-                            <div class="audio-controls">
-                                <audio controls src={uploadedAudioUrl || recordedAudioUrl} preload="auto">
-                                    Your browser does not support the audio element.
-                                </audio>
-                            </div>
+                            <audio controls src={uploadedAudioUrl || recordedAudioUrl} preload="auto">
+                                Your browser does not support the audio element.
+                            </audio>
                         </div>
                     {/if}
                 </div>
@@ -700,18 +698,15 @@
         </div>
 
         <div class="audio-input-section">
-            <h3>Generated Audio</h3>
             <div class="audio-controls">
                 <div class="audio-preview-container">
                     {#if error}
                         <p class="error-message">{error}</p>
                     {:else if audioUrl}
                         <div class="audio-preview">
-                            <div class="audio-controls">
-                                <audio controls src={audioUrl}>
-                                    Your browser does not support the audio element.
-                                </audio>
-                            </div>
+                            <audio controls src={audioUrl}>
+                                Your browser does not support the audio element.
+                            </audio>
                             <button 
                                 class="download-button"
                                 on:click={() => {
@@ -1154,18 +1149,34 @@
     .audio-preview {
         width: 100%;
         max-width: 500px;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        align-items: center;
     }
 
     .audio-preview audio {
         width: 100%;
         height: 36px;
-        margin: 0;
     }
 
-    audio {
-        width: 100%;
-        max-width: 500px;
-        height: 36px;
+    .download-button {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: #333;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 0.75rem 1.25rem;
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .download-button:hover {
+        background: #222;
+        transform: translateY(-1px);
     }
 
     .controls {
@@ -1223,12 +1234,6 @@
         padding: 1rem;
         margin-bottom: 1rem;
         border: 1px solid #e5e7eb;
-    }
-
-    .output-container h3 {
-        font-size: 0.9rem;
-        margin: 0 0 0.75rem 0;
-        font-weight: 500;
     }
 
     .audio-controls {
@@ -1448,30 +1453,6 @@
 
     .parameter-control input[type="range"]::-webkit-slider-thumb:hover {
         transform: scale(1.2);
-    }
-
-    .download-button {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        background: #333;
-        color: white;
-        border: none;
-        border-radius: 8px;
-        padding: 0.75rem 1.25rem;
-        font-size: 0.9rem;
-        cursor: pointer;
-        transition: all 0.2s ease;
-    }
-
-    .download-button:hover {
-        background: #222;
-        transform: translateY(-1px);
-    }
-
-    .download-button svg {
-        width: 16px;
-        height: 16px;
     }
 
     @media (max-width: 1200px) {
