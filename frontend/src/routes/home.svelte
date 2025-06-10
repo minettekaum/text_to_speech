@@ -1229,13 +1229,17 @@
         border: 1px solid #e5e7eb;
     }
 
+    .output-audio .audio-preview {
+        width: 100%;
+        max-width: 500px;
+    }
+
     .output-audio .audio-controls {
         display: flex;
         flex-direction: row;
         align-items: center;
         gap: 1rem;
         width: 100%;
-        max-width: 500px;
     }
 
     .output-audio audio {
