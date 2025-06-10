@@ -254,7 +254,7 @@
             }
 
             //const response = await fetch('https://gothic-sara-ann-challenge-8bad5bca.koyeb.app/api/generate', {
-            const response = await fetch(`${API_URL}/api/generate`, {
+            const response = await fetch('/api/generate', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
