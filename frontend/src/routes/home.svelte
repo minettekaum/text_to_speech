@@ -700,40 +700,43 @@
         </div>
 
         <div class="output-container">
-            <div class="output-audio">
-                {#if error}
-                    <p class="error-message">{error}</p>
-                {:else if audioUrl}
-                    <div class="audio-preview">
-                        <div class="audio-controls">
-                            <audio controls src={audioUrl}>
-                                Your browser does not support the audio element.
-                            </audio>
-                            <button 
-                                class="download-button"
-                                on:click={() => {
-                                    if (!audioUrl) return;
-                                    const link = document.createElement('a');
-                                    link.href = audioUrl;
-                                    link.download = `generated_audio_${new Date().getTime()}.wav`;
-                                    document.body.appendChild(link);
-                                    link.click();
-                                    document.body.removeChild(link);
-                                }}
-                                title="Download audio"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                                    <polyline points="7 10 12 15 17 10"/>
-                                    <line x1="12" y1="15" x2="12" y2="3"/>
-                                </svg>
-                                Download
-                            </button>
+            <h3>Generated Audio</h3>
+            <div class="audio-controls">
+                <div class="audio-preview-container">
+                    {#if error}
+                        <p class="error-message">{error}</p>
+                    {:else if audioUrl}
+                        <div class="audio-preview">
+                            <div class="audio-controls">
+                                <audio controls src={audioUrl}>
+                                    Your browser does not support the audio element.
+                                </audio>
+                                <button 
+                                    class="download-button"
+                                    on:click={() => {
+                                        if (!audioUrl) return;
+                                        const link = document.createElement('a');
+                                        link.href = audioUrl;
+                                        link.download = `generated_audio_${new Date().getTime()}.wav`;
+                                        document.body.appendChild(link);
+                                        link.click();
+                                        document.body.removeChild(link);
+                                    }}
+                                    title="Download audio"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                        <polyline points="7 10 12 15 17 10"/>
+                                        <line x1="12" y1="15" x2="12" y2="3"/>
+                                    </svg>
+                                    Download
+                                </button>
+                            </div>
                         </div>
-                    </div>
-                {:else}
-                    <p class="placeholder-text">Your generated audio will appear here</p>
-                {/if}
+                    {:else}
+                        <p class="placeholder-text">Your generated audio will appear here</p>
+                    {/if}
+                </div>
             </div>
         </div>
     </section>
@@ -1215,26 +1218,41 @@
     }
 
     .output-container {
-        padding: 0;
-    }
-
-    .output-audio {
         background: #fcfcfc;
         border-radius: 16px;
         padding: 1rem;
-        min-height: 60px;
-        display: flex;
-        justify-content: center;
-        align-items: center;
+        margin-bottom: 1rem;
         border: 1px solid #e5e7eb;
     }
 
-    .output-audio .audio-preview {
+    .output-container h3 {
+        font-size: 0.9rem;
+        margin: 0 0 0.75rem 0;
+        font-weight: 500;
+    }
+
+    .audio-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        min-height: 45px;
+        justify-content: flex-start;
+    }
+
+    .audio-preview-container {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 45px;
+    }
+
+    .audio-preview {
         width: 100%;
         max-width: 500px;
     }
 
-    .output-audio .audio-controls {
+    .audio-preview .audio-controls {
         display: flex;
         flex-direction: row;
         align-items: center;
@@ -1242,7 +1260,7 @@
         width: 100%;
     }
 
-    .output-audio audio {
+    .audio-preview audio {
         flex: 1;
         height: 36px;
     }
