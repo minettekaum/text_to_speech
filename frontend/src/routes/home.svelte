@@ -19,12 +19,12 @@
     let uploadedAudioUrl: string | null = null;
 
     // Generation parameters with correct ranges
-    let maxNewTokens = 1024;  // Default middle value
-    let cfgScale = 3.0;       // Default middle value
-    let temperature = 1.2;    // Default middle value
-    let topP = 0.9;          // Default middle value
-    let cfgFilterTopK = 32;   // Default middle value
-    let speedFactor = 0.9;    // Default middle value
+    let maxNewTokens = 1024;  
+    let cfgScale = 3.0;      
+    let temperature = 1.2;   
+    let topP = 0.9;          
+    let cfgFilterTopK = 32;   
+    let speedFactor = 0.9;    
 
     let generationProgress = 0;
     let progressInterval: number;
