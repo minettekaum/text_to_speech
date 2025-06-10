@@ -1,14 +1,4 @@
 <script lang="ts">
-    // API URL configuration
-    let API_URL = 'http://127.0.0.1:8000';
-    
-    // Set API URL on client-side only
-    if (typeof window !== 'undefined') {
-        API_URL = window.location.hostname.includes('koyeb.app') 
-            ? `https://${window.location.hostname}`
-            : 'http://127.0.0.1:8000';
-    }
-
     interface Message {
         speaker: string;
         text: string;
@@ -253,8 +243,8 @@
                 }
             }
 
-            //const response = await fetch('https://gothic-sara-ann-challenge-8bad5bca.koyeb.app/api/generate', {
-            const response = await fetch('/api/generate', {
+            const response = await fetch('https://gothic-sara-ann-challenge-8bad5bca.koyeb.app/api/generate', {
+            //const response = await fetch('http://127.0.0.1:8000/api/generate', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
