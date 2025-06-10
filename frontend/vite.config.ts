@@ -7,6 +7,6 @@ export default defineConfig({
 		host: true,
 		port: 4173,
 		strictPort: true,
-		allowedHosts: ['soft-lexine-challenge-d3e578f4.koyeb.app']
+		allowedHosts: ['.koyeb.app']
 	}
 });
