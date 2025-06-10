@@ -24,21 +24,24 @@ from dia.model import Dia
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+'''
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler()],
+)
+logger = logging.getLogger(__name__)
+'''
 
-"""
-# Parse command line arguments
-parser = argparse.ArgumentParser(description="FastAPI server for Nari TTS")
-parser.add_argument("--device", type=str, help="Force device (e.g., 'cuda', 'mps', 'cpu')")
-parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to run the server on")
-parser.add_argument("--port", type=int, default=8000, help="Port to run the server on")
-args = parser.parse_args()
-"""
+#GLOBALA VARIABLER
+
 app = FastAPI()
 
+#Colla om du behöver alla CORS
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://soft-lexine-challenge-d3e578f4.koyeb.app"],
+    allow_origins=["https://soft-lexine-challenge-d3e578f4.koyeb.app"], #sätt so att de mathcar alla från koyeb och local host
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -50,21 +53,10 @@ AUDIO_DIR.mkdir(exist_ok=True)
 UPLOADS_DIR = Path("upload_files")
 UPLOADS_DIR.mkdir(exist_ok=True)
 
-if torch.cuda.is_available():
-    device = torch.device("cuda")
-else:
-    device = torch.device("cpu")
-"""
-# Initialize device
-if device: #if args.device:
-    device = torch.device(device) #device = torch.device(args.device)
-else:
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-    else:
-        device = torch.device("cpu")
-"""
-logger.info(f"Using device: {device}")
+# Ha mera som från Koyeb
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+logger.info(f"Using DEVICE: {DEVICE}")
 
 # Load Nari model and config
 logger.info("Loading Nari model...")
@@ -74,9 +66,9 @@ try:
         "cuda": "float16",  # NVIDIA – better with float16
     }
 
-    dtype = dtype_map.get(device.type, "float16")
-    logger.info(f"Using device: {device}, attempting to load model with {dtype}")
-    model = Dia.from_pretrained("nari-labs/Dia-1.6B", compute_dtype=dtype, device=device)
+    dtype = dtype_map.get(DEVICE.type, "float16")
+    logger.info(f"Using DEVICE: {DEVICE}, attempting to load model with {dtype}")
+    model = Dia.from_pretrained("nari-labs/Dia-1.6B", compute_dtype=dtype, DEVICE=DEVICE)
 except Exception as e:
     logger.error(f"Error loading Nari model: {e}")
     raise
@@ -95,13 +87,18 @@ class GenerateRequest(BaseModel):
     cfg_filter_top_k: int = 35
     speed_factor: float = 0.94
 
+#DEFINIERA APPEN
+@app.get("/api/health")ß
+async def health_check():
+    return {"status": "ok", "message": "Backend is running"}
+
 @app.post("/api/generate")
 async def run_inference(request: GenerateRequest):
     """
     Runs Nari inference using the globally loaded model and provided inputs.
     Uses temporary files for text and audio prompt compatibility with inference.generate.
     """
-    global model, device  # Access global model, config, device
+    global model, DEVICE  # Access global model, config, DEVICE
 
     if not request.text_input or request.text_input.isspace():
         raise HTTPException(status_code=400, detail="Text input cannot be empty.")
@@ -235,9 +232,7 @@ async def run_inference(request: GenerateRequest):
                 logger.warning(f"Error deleting temporary audio prompt file {temp_audio_prompt_path}: {e}")
 
 
-@app.get("/api/health")
-async def health_check():
-    return {"status": "ok", "message": "Backend is running"}
+
 
 @app.get("/")
 def read_root():
@@ -246,24 +241,3 @@ def read_root():
 @app.get("/items/{item_id}")
 def read_item(item_id: int, q: Union[str, None] = None):
     return {"item_id": item_id, "q": q}
-
-'''
-if __name__ == "__main__":
-        # Only parse arguments when running the script directly
-    parser = argparse.ArgumentParser(description="FastAPI server for Nari TTS")
-    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to run the server on")
-    parser.add_argument("--port", type=int, default=8000, help="Port to run the server on")
-    parser.add_argument("--device", type=str, help="Force device (e.g., 'cuda', 'mps', 'cpu')")
-    args = parser.parse_args()
-
-    # Override device if specified
-    if args.device:
-        device = torch.device(args.device)
-        logger.info(f"Overriding device to: {device}")
-        # Reload model with new device
-        model = Dia.from_pretrained("nari-labs/Dia-1.6B", 
-                                  compute_dtype=dtype_map.get(device.type, "float16"),
-                                  device=device)
-
-    uvicorn.run(app, host=args.host, port=args.port)
-'''
