@@ -122,7 +122,6 @@ dependencies = [
     { name = "soundfile" },
     { name = "torch" },
     { name = "torchaudio" },
-    { name = "uvicorn" },
 ]
 
 [package.metadata]
@@ -135,7 +134,6 @@ requires-dist = [
     { name = "soundfile", specifier = ">=0.13.1" },
     { name = "torch", specifier = ">=2.7.0" },
     { name = "torchaudio", specifier = ">=2.7.0" },
-    { name = "uvicorn", specifier = ">=0.34.2" },
 ]
 
 [[package]]

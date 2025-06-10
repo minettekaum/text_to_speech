@@ -1,4 +1,14 @@
 <script lang="ts">
+    // API URL configuration
+    let API_URL = 'http://127.0.0.1:8000';
+    
+    // Set API URL on client-side only
+    if (typeof window !== 'undefined') {
+        API_URL = window.location.hostname.includes('koyeb.app') 
+            ? `https://${window.location.hostname}`
+            : 'http://127.0.0.1:8000';
+    }
+
     interface Message {
         speaker: string;
         text: string;
@@ -243,8 +253,8 @@
                 }
             }
 
-            const response = await fetch('https://gothic-sara-ann-challenge-8bad5bca.koyeb.app/api/generate', {
-            //const response = await fetch('http://127.0.0.1:8000/api/generate', {
+            //const response = await fetch('https://gothic-sara-ann-challenge-8bad5bca.koyeb.app/api/generate', {
+            const response = await fetch(`${API_URL}/api/generate`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -1564,23 +1574,6 @@ audio {
     .download-button svg {
         width: 16px;
         height: 16px;
-    }
-    .empty-chat-button {
-        width: 100%;
-        padding: 0.4rem;
-        background: #fee2e2;
-        border: none;
-        border-radius: 6px;
-        font-size: 0.85rem;
-        color: #dc2626;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        margin-top: 0.5rem;
-    }
-
-    .empty-chat-button:hover {
-        background: #fecaca;
-        color: #b91c1c;
     }
 
 </style> 
