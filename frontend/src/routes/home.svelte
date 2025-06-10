@@ -668,9 +668,11 @@
                 <div class="audio-preview-container">
                     {#if uploadedAudioUrl || recordedAudioUrl}
                         <div class="audio-preview">
-                            <audio controls src={uploadedAudioUrl || recordedAudioUrl} preload="auto">
-                                Your browser does not support the audio element.
-                            </audio>
+                            <div class="audio-controls">
+                                <audio controls src={uploadedAudioUrl || recordedAudioUrl} preload="auto">
+                                    Your browser does not support the audio element.
+                                </audio>
+                            </div>
                         </div>
                     {/if}
                 </div>
@@ -1080,22 +1082,22 @@
     .audio-input-section {
         background: #fcfcfc;
         border-radius: 16px;
-        padding: 0.75rem;
+        padding: 1rem;
         margin-bottom: 1rem;
         border: 1px solid #e5e7eb;
     }
 
     .audio-input-section h3 {
         font-size: 0.9rem;
-        margin: 0 0 0.5rem 0;
+        margin: 0 0 0.75rem 0;
         font-weight: 500;
     }
 
     .audio-controls {
         display: flex;
         flex-direction: column;
-        gap: 1rem;
-        min-height: 90px;
+        gap: 0.75rem;
+        min-height: 45px;
         justify-content: flex-start;
     }
 
@@ -1104,6 +1106,7 @@
         gap: 2.5rem;
         justify-content: center;
         margin-left: 2rem;
+        margin-bottom: 0.5rem;
     }
 
     .audio-button {
