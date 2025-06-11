@@ -1,3 +1,81 @@
+# Text-to-Speech Application with Dia-1.6B
+
+In general about what text to speach models. 
+
+
+
+A full-stack text-to-speech application using the Dia-1.6B model, FastAPI backend, and Svelte frontend. This tutorial will guide you through setting up, developing, and deploying the application.
+
+![Text-to-Speech App Demo](assets/demo.png)
+
+## Requirements 
+
+To successfully follow and complete this guide, you need:
+
+- Python (version 3.10 or higher) installed on your local development environment
+- CPU or GPU that supports `torch=>2.6.0` and `torchaudio=>2.6.0`
+- A Koyeb account to deploy the application
+- The Koyeb CLI installed to interact with Koyeb from the command line
+- uv (Python package installer and resolver)
+
+## Steps 
+
+
+## Project Structure
+
+The project consists of two main directories:
+- `backend/`: Contains the FastAPI server and Dia model implementation
+- `frontend/`: Contains the Svelte frontend application
+
+## Step 1: Backend Setup
+
+1. **Clone the repository and set up the backend:**
+   ```bash
+   git clone <repository-url>
+   cd text_to_voice/backend
+   uv sync
+   ```
+
+2. **Test the backend:**
+   ```bash
+   uv run fastapi dev main.py
+   ```
+
+## Step 2: Frontend Setup
+
+1. Navigate to the frontend directory:
+   ```bash
+   cd frontend
+   ```
+
+2. Install dependencies:
+   ```bash
+   pnpm install
+   ```
+
+3. Start the development server:
+   ```bash
+   pnpm run dev
+   ```
+
+## Start from scratch
+
+Create a project folder for the backend and the frontend and navigate to that folder 
+ ```bash
+   mkdir text-to-voice-app
+    cd text-to-voice-app
+```
+
+Use `uv` to install and manage backend dependencies. Get started by initializing the backend project using `uv`:
+```bash
+`   uv init backend
+```
+Add to the backend the `dia` folder form https://github.com/nari-labs/dia.git, it contains the model configuration. The reason for not using `uv add git+https://github.com/nari-labs/dia.git` is that it loads the whole project, which has features that are not necessary the backend.  
+
+To the `main.py` containing the following complete implementation of our application. We will in the next section breakdown the different steps.
+
+
+```
 import logging
 from contextlib import asynccontextmanager
 
@@ -100,6 +178,7 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -238,4 +317,137 @@ async def run_inference(request: GenerateRequest):
                 logger.debug(f"Deleted temporary audio prompt file: {temp_audio_prompt_path}")
             except OSError as e:
                 logger.warning(f"Error deleting temporary audio prompt file {temp_audio_prompt_path}: {e}")
+
+```
+
+Let’s through some of the different steps in the code.
+
+#### Loading the model 
+In this step we load the dia1.6B model. 
+```
+def load_model(self):
+        """Load the Dia model with appropriate configuration."""
+        try:
+            dtype = self.dtype_map.get(self.device, "float16")
+            logger.info(f"Loading model with {dtype} on {self.device}")
+            self.model = Dia.from_pretrained("nari-labs/Dia-1.6B", compute_dtype=dtype, device=self.device)
+        except Exception as e:
+            logger.error(f"Error loading model: {e}")
+            raise
+```
+#### Defining the paramterers 
+We define and preset the paramaters for the app. The user can change these in the frontend. 
+```
+class GenerateRequest(BaseModel):
+    text_input: str
+    audio_prompt_input: Optional[AudioPrompt] = None
+    max_new_tokens: int = 1024
+    cfg_scale: float = 3.0
+    temperature: float = 1.3
+    top_p: float = 0.95
+    cfg_filter_top_k: int = 35
+    speed_factor: float = 0.94
+```
+#### Setting up FastAPI
+How to set up Fastapi
+```
+app = FastAPI(
+    title="Dia Text-to-Voice API",
+    description="API for generating voice using Dia model",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+```
+####  CORSMiddleware
+In this step we set up the connection between the frontend and the backend. 
+```
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://soft-lexine-challenge-d3e578f4.koyeb.app",
+        "https://gothic-sara-ann-challenge-8bad5bca.koyeb.app",
+        "http://localhost:5173"
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
+#### Inference and running 
+In `run_inference(request: GenerateRequest)` we run the inference and do some clean up. After the `main.py` is setup you can run 
+```bash
+uv run fastapi dev main.py
+```
+to check if the backend is working.
+
+
+
+### Frontend Developmen`
+- Main components are in `frontend/src/`
+- Styles can be customized in the respective component files
+- API integration is handled in the frontend services
+
+
+## Step 4: Deployment on Koyeb
+
+1. **Prepare for deployment:**
+   - Ensure all environment variables are set
+   - Test the application locally
+   - Build Docker images for both frontend and backend
+
+2. **Deploy Backend:**
+   ```bash
+   # Build the backend Docker image
+   docker build -t text-to-speech-backend ./backend
+   
+   # Push to a container registry (e.g., Docker Hub)
+   docker tag text-to-speech-backend yourusername/text-to-speech-backend
+   docker push yourusername/text-to-speech-backend
+   ```
+
+3. **Deploy Frontend:**
+   ```bash
+   # Build the frontend Docker image
+   docker build -t text-to-speech-frontend ./frontend
+   
+   # Push to container registry
+   docker tag text-to-speech-frontend yourusername/text-to-speech-frontend
+   docker push yourusername/text-to-speech-frontend
+   ```
+
+4. **Deploy on Koyeb:**
+   - Create a new app on Koyeb
+   - Select "Deploy from Docker image"
+   - Configure environment variables
+   - Set up the backend service first
+   - Deploy the frontend service
+   - Configure networking between services
+
+5. **Configure Domain:**
+   - Set up custom domains in Koyeb
+   - Configure SSL certificates
+   - Update DNS settings
+
+## Troubleshooting
+
+Common issues and solutions:
+
+1. **Backend Issues:**
+   - Check model loading errors
+   - Verify environment variables
+   - Check audio file permissions
+
+2. **Frontend Issues:**
+   - Verify API endpoint configuration
+   - Check CORS settings
+   - Ensure proper environment variables
+
+3. **Deployment Issues:**
+   - Verify Docker image builds
+   - Check Koyeb logs
+   - Ensure proper networking configuration
+
+
+
 
