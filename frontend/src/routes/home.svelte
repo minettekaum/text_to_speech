@@ -218,8 +218,8 @@
                 }
             }
 
-            // Use the SvelteKit API endpoint which will proxy to the backend
-            const response = await fetch('/api/generate', {
+            const response = await fetch('https://gothic-sara-ann-challenge-8bad5bca.koyeb.app/api/generate', {
+            //const response = await fetch('http://127.0.0.1:8000/api/generate', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
