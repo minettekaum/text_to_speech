@@ -4,6 +4,27 @@ Dia-1.6B is a text-to-speech model by Nari Labs, known for its natural voice mod
 
 ![Text-to-Speech App Demo](assets/demo.png)
 
+## Demo
+
+Here is a demo of the app
+
+![Text-to-Speech App Demo](assets/demo_screen_recording.gif)
+
+The prompt was: 
+- Speaker 1: I could really use a French coffee right now.
+- Speaker 2: Oh! I found this charming French café around the corner. So authentic!
+- Speaker 1: Really? Do they have fresh pastries?
+- Speaker 2: 'Yes! Their chocolate croissants are amazing! And the owner is from Paris (humming)
+
+And the generation parameters were default except the `Max New Tokens` was set to 2020.
+
+The output audio is: 
+
+<audio controls>
+  <source src="assets/demo_audio.wav" type="audio/wav">
+</audio>
+
+
 ## Project Structure
 
 The project consists of two directories:
