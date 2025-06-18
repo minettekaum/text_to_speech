@@ -6,144 +6,165 @@ Dia-1.6B is a text-to-speech model by Nari Labs, known for its natural voice mod
 
 ## Demo
 
-Here is a demo of the app
+Experience the app in action:
 
 ![Text-to-Speech App Demo](assets/demo_screen_recording.gif)
 
-The prompt was: 
-- Speaker 1: I could really use a French coffee right now.
-- Speaker 2: Oh! I found this charming French café around the corner. So authentic!
-- Speaker 1: Really? Do they have fresh pastries?
-- Speaker 2: 'Yes! Their chocolate croissants are amazing! And the owner is from Paris (humming)
+### Example Prompt:
 
-The generation parameters were default, except that the `Max New Tokens` was changed to 2020.
+* **Speaker 1:** I could really use a French coffee right now.
+* **Speaker 2:** Oh! I found this charming French café around the corner. So authentic!
+* **Speaker 1:** Really? Do they have fresh pastries?
+* **Speaker 2:** Yes! Their chocolate croissants are amazing! And the owner is from Paris. *(humming)*
 
-Here you can find the [generated audio](assets/demo_audio.wav) 
+#### Generation Parameters:
+
+Default settings were used except for `Max New Tokens`, which was set to 2020.
+
+[Click here to listen to the generated audio](assets/demo_audio.wav)
 
 <audio controls>
   <source src="assets/demo_audio.wav" type="audio/wav">
 </audio>
 
+---
 
 ## Project Structure
 
-The project consists of two directories:
-- `backend/`: Contains the FastAPI server and Dia model implementation
-- `frontend/`: Contains the Svelte frontend application
+The project consists of two main directories:
 
-## Deploy on Koyeb and play around
+* **`backend/`:** Contains the FastAPI server and Dia model implementation.
+* **`frontend/`:** Contains the Svelte frontend application.
 
-### Requirements 
-To be able to run the app, you'll need a Koyeb account 
-- A Koyeb account to deploy the application
-- The Koyeb CLI is installed to interact with Koyeb from the command line
-### Backend
+---
+
+## Deploy on Koyeb
+
+### Requirements
+
+Before deploying the app, ensure you have:
+
+* A [Koyeb](https://www.koyeb.com) account.
+* The [Koyeb CLI](https://www.koyeb.com/docs/cli) installed for command-line interaction.
+
+### Backend Deployment
+
 [![Deploy to Koyeb](https://www.koyeb.com/static/images/deploy/button.svg)](https://app.koyeb.com/deploy?name=text-to-voice-backend&repository=minettekaum%2Ftext_to_voice&branch=main&workdir=backend&builder=dockerfile&instance_type=gpu-nvidia-a100&regions=na&hc_grace_period%5B8000%5D=300&hc_restart_limit%5B8000%5D=1&hc_timeout%5B8000%5D=300)
 
-Remember to start the backend before the frontend. 
-### Frontend 
+### Frontend Deployment
+
 [![Deploy to Koyeb](https://www.koyeb.com/static/images/deploy/button.svg)](https://app.koyeb.com/deploy?name=text-to-voice-frontend&repository=minettekaum%2Ftext_to_voice&branch=main&workdir=frontend&builder=dockerfile&regions=par&ports=4173%3Bhttp%3B%2F&hc_protocol%5B4173%5D=tcp&hc_grace_period%5B4173%5D=5&hc_interval%5B4173%5D=30&hc_restart_limit%5B4173%5D=3&hc_timeout%5B4173%5D=5&hc_path%5B4173%5D=%2F&hc_method%5B4173%5D=get)
 
-## Work on the project locally
+---
+
+## Local Setup
+
+### Prerequisites
+
+- Python 3.8+
+- Node.js 16+
+- pnpm
+- uv (Python package installer)
 
 ### Step 1: Backend Setup
 
-1. **Clone the repository and set up the backend:**
+1. **Clone the repository and navigate to the backend directory:**
+
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/minettekaum/text_to_voice.git
    cd text_to_voice/backend
    uv sync
    ```
 
-2. **Test the backend:**
+2. **Run the backend server:**
+
    ```bash
    uv run fastapi dev main.py
    ```
 
-In the backend, there is a `dia` folder from https://github.com/nari-labs/dia.git; it contains the model configuration. The reason for not using `uv add git+https://github.com/nari-labs/dia.git` is that it loads the entire project, which includes features unnecessary for this project.  
+The `backend/` directory includes a `dia` folder with a trimmed-down version of the Dia model from [Nari Labs](https://github.com/nari-labs/dia.git). This approach avoids loading unnecessary components.
 
-The [`main.py`](backend/main.py) file contains FastAPI as a backend wrapper. The model is loaded and initialised, and the connection between the frontend and backend is handled within the script. 
+You can optimize the model for faster inference using Pruna AI. Follow this [tutorial](https://www.koyeb.com/tutorials/deploy-flux-models-with-pruna-ai-for-8x-faster-inference-on-koyeb) for guidance.
 
-The model can be optimised, and you can use Pruna AI to do that. Check out the [tutorial](https://www.koyeb.com/tutorials/deploy-flux-models-with-pruna-ai-for-8x-faster-inference-on-koyeb) about how to use Pruna AI on a Flux model and follow the same steps.  
+---
 
 ### Step 2: Frontend Setup
 
-1. Navigate to the frontend directory:
+1. **Navigate to the frontend directory:**
+
    ```bash
    cd frontend
    ```
 
-2. Install dependencies:
+2. **Install dependencies:**
+
    ```bash
    pnpm install
    ```
 
-3. Start the development server:
+3. **Start the development server:**
+
    ```bash
    pnpm run dev
    ```
- 
-The frontend is done with SvelteKit, and it has three parts: 
 
-1. **Main Page (`src/routes/+page.svelte`):**
-   - Entry point of the application
-   - Handles routing to the home page
+The frontend uses SvelteKit with a modular component architecture:
 
-2. **Home Page (`src/routes/home.svelte`):**
-   - Contains the text-to-speech interface
-   - Manages audio recording and playback
-   - Handles API communication with the backend
+#### Core Components:
 
-3. **Message Component (`src/components/Message.svelte`):**
-   - Displays status messages and errors
-   - Provides user feedback during text-to-speech processing
+* **`ChatInterface.svelte`:** Manages message display, input handling, and speaker selection.
+* **`GenerationSettings.svelte`:** Provides controls for AI model parameters with tooltips.
+* **`SoundEffectsPanel.svelte`:** Allows sound effect selection and includes example dialogues.
+* **`AudioControls.svelte`:** Handles audio recording, file uploads, and playback.
+* **`GenerationButton.svelte`:** Facilitates TTS generation and communicates with the backend.
+* **`AudioOutput.svelte`:** Displays playback and download options for generated audio.
 
+---
 
+## Deployment on Koyeb
 
+Deploy the app using the Koyeb control panel or the [CLI](https://www.koyeb.com/docs/build-and-deploy/cli/installation).
 
-### Deployment on Koyeb
+### CLI Deployment Commands
 
-Deploy the app to Koyeb using the control panel or via the [Koyeb CLI](https://www.koyeb.com/tutorials/deploy-flux-models-with-pruna-ai-for-8x-faster-inference-on-koyeb#deploy-the-optimized-model-on-koyeb). You can check the configuration for deploying using the control panel on the buttons above. 
+#### Backend:
 
-#### Koyeb CLI Backend 
-```bash 
+```bash
 koyeb deploy . text_to_voice/backend \
    --instance-type gpu-nvidia-l40s \
    --region na \
    --type web \
    --port 8000:http \
-   --archive-builder \
+   --archive-builder
 ```
-#### Koyeb CLI Frontend 
+
+#### Frontend:
+
 ```bash
 koyeb deploy . text_to_voice/frontend \
    --instance-type nano \
    --region na \
    --type web \
-   --port 8000:http \
-   --archive-builder \
+   --port 4173:http \
+   --archive-builder
 ```
 
+---
 
 ## Troubleshooting
 
-Common issues and solutions:
+### Backend Issues:
 
-1. **Backend Issues:**
-   - Check model loading errors
-   - Verify environment variables
-   - Check audio file permissions
+* Ensure the Dia model loads correctly and verify environment variables.
+* Check permissions for audio file handling.
 
-2. **Frontend Issues:**
-   - Verify API endpoint configuration
-   - Check CORS settings
-   - Ensure proper environment variables
+### Frontend Issues:
 
-3. **Deployment Issues:**
-   - Verify Docker image builds
-   - Check Koyeb logs
-   - Ensure proper networking configuration
+* Verify API endpoint configurations and CORS settings.
 
+### Deployment Issues:
 
+* Inspect Docker image build logs for errors.
+* Review Koyeb logs for networking and configuration issues.
 
-
+For further assistance, consult the [Koyeb Documentation](https://www.koyeb.com/docs).
