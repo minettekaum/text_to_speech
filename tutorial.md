@@ -16,9 +16,13 @@ The prompt was:
 - Speaker 1: Really? Do they have fresh pastries?
 - Speaker 2: 'Yes! Their chocolate croissants are amazing! And the owner is from Paris (humming)
 
-And the generation parameters were default except the `Max New Tokens` was set to 2020.
+The generation parameters were default, except that the `Max New Tokens` was changed to 2020.
 
 Here you can find the [generated audio](assets/demo_audio.wav) 
+
+<audio controls>
+  <source src="assets/demo_audio.wav" type="audio/wav">
+</audio>
 
 
 ## Project Structure
