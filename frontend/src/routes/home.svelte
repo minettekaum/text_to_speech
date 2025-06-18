@@ -1,26 +1,6 @@
 <script lang="ts">
     import Message from '../components/Message.svelte';
     
-    // Function to determine the backend URL
-    function getBackendUrl(): string {
-        const currentHost = window.location.hostname;
-        
-        // If we're on localhost, use the local backend
-        if (currentHost === 'localhost' || currentHost === '127.0.0.1') {
-            return 'http://127.0.0.1:8000';
-        }
-        
-        // If we're on a koyeb.app domain, use the same host but with backend prefix
-        if (currentHost.endsWith('.koyeb.app')) {
-            // Extract the subdomain and replace it with the backend subdomain
-            // or use the same host if it's already the backend
-            return `https://${currentHost}`;
-        }
-        
-        // Fallback - this shouldn't happen in production
-        return 'http://127.0.0.1:8000';
-    }
-    
     interface Message {
         speaker: string;
         text: string;
@@ -238,8 +218,8 @@
                 }
             }
 
-            const backendUrl = getBackendUrl();
-            const response = await fetch(`${backendUrl}/api/generate`, {
+            // Use the SvelteKit API endpoint which will proxy to the backend
+            const response = await fetch('/api/generate', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
