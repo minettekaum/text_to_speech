@@ -17,11 +17,11 @@ function getBackendUrl(requestUrl: string): string {
             return `https://${hostname}`;
         }
         
-        // Fallback to environment variable or localhost
-        return process.env.API_URL || 'http://127.0.0.1:8000';
+        // Fallback to localhost
+        return 'http://127.0.0.1:8000';
     } catch {
-        // If URL parsing fails, fall back to environment or localhost
-        return process.env.API_URL || 'http://127.0.0.1:8000';
+        // If URL parsing fails, fall back to localhost
+        return 'http://127.0.0.1:8000';
     }
 }
 
@@ -32,6 +32,8 @@ export const POST: RequestHandler = async ({ request, url }) => {
         
         // Get the API URL dynamically
         const API_URL = getBackendUrl(url.toString());
+        console.log('Server-side backend URL:', API_URL);
+        console.log('Full request URL:', `${API_URL}/api/generate`);
         
         // Forward the request to the backend
         const response = await fetch(`${API_URL}/api/generate`, {
@@ -39,7 +41,9 @@ export const POST: RequestHandler = async ({ request, url }) => {
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify(body)
+            body: JSON.stringify(body),
+            // Add timeout and better error handling
+            signal: AbortSignal.timeout(60000) // 60 second timeout
         });
 
         if (!response.ok) {
