@@ -6,12 +6,6 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies required for soundfile and torch
-#RUN apt-get update && apt-get install -y \
-#    libsndfile1 \
-#    gcc \
-#    && rm -rf /var/lib/apt/lists/*
-
 # Copy dependency files first for better caching
 COPY pyproject.toml uv.lock ./
 
