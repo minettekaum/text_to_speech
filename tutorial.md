@@ -18,11 +18,7 @@ The prompt was:
 
 And the generation parameters were default except the `Max New Tokens` was set to 2020.
 
-The output audio is: 
-
-<audio controls>
-  <source src="assets/demo_audio.wav" type="audio/wav">
-</audio>
+Here you can find the [generated audio](assets/demo_audio.wav) 
 
 
 ## Project Structure
