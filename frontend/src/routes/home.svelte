@@ -677,13 +677,14 @@
         </div>
 
         <div class="audio-input-section">
+            <h3>Generated Audio</h3>
             <div class="audio-controls">
                 <div class="audio-preview-container">
                     {#if error}
                         <p class="error-message">{error}</p>
                     {:else if audioUrl}
                         <div class="audio-preview">
-                            <audio controls src={audioUrl}>
+                            <audio controls src={audioUrl} preload="auto">
                                 Your browser does not support the audio element.
                             </audio>
                             <button 
@@ -1084,10 +1085,15 @@
     .audio-preview {
         width: 100%;
         max-width: 500px;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        align-items: center;
     }
+    
     .audio-preview audio {
-        flex: 1;
-        height: 36px;
+        width: 100%;
+        height: 40px;
     }
 
     .error-message {
