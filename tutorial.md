@@ -1,25 +1,21 @@
 # Text-to-Speech Application with Dia-1.6B
 
-ADD SOME GENERAL INFO ABOUT TEXT TO VOICE MODELS AND ADD A DEMO!
-
-
-
-A full-stack text-to-speech application using the Dia-1.6B model, FastAPI backend, and Svelte frontend. This tutorial will guide you through setting up, developing, and deploying the application.
+Dia-1.6B is a text-to-speech model by Nari Labs, known for its natural voice modulation and expressive intonation. This tutorial will guide you through building a full-stack TTS application using Dia-1.6B with a FastAPI backend, a Svelte frontend, and deployment on Koyeb.
 
 ![Text-to-Speech App Demo](assets/demo.png)
 
 ## Project Structure
 
-The project consists of two main directories:
+The project consists of two directories:
 - `backend/`: Contains the FastAPI server and Dia model implementation
 - `frontend/`: Contains the Svelte frontend application
 
 ## Deploy on Koyeb and play around
 
 ### Requirements 
-To be able to run the app you'll need a Koyeb account 
+To be able to run the app, you'll need a Koyeb account 
 - A Koyeb account to deploy the application
-- The Koyeb CLI installed to interact with Koyeb from the command line
+- The Koyeb CLI is installed to interact with Koyeb from the command line
 ### Backend
 [![Deploy to Koyeb](https://www.koyeb.com/static/images/deploy/button.svg)](https://app.koyeb.com/deploy?name=text-to-voice-backend&repository=minettekaum%2Ftext_to_voice&branch=main&workdir=backend&builder=dockerfile&instance_type=gpu-nvidia-a100&regions=na&hc_grace_period%5B8000%5D=300&hc_restart_limit%5B8000%5D=1&hc_timeout%5B8000%5D=300)
 
@@ -43,9 +39,11 @@ Remember to start the backend before the frontend.
    uv run fastapi dev main.py
    ```
 
-In the bavkend there is a  `dia` folder form https://github.com/nari-labs/dia.git, it contains the model configuration. The reason for not using `uv add git+https://github.com/nari-labs/dia.git` is that it loads the whole project, which has features that are not necessary for this project.  
+In the backend, there is a `dia` folder from https://github.com/nari-labs/dia.git; it contains the model configuration. The reason for not using `uv add git+https://github.com/nari-labs/dia.git` is that it loads the entire project, which includes features unnecessary for this project.  
 
-The [`main.py`](backend/main.py) contains the FastAPI as a backend wrapper, the model is loaded and initiallised, and the connection between frontend and backend is handled as well in the script. 
+The [`main.py`](backend/main.py) file contains FastAPI as a backend wrapper. The model is loaded and initialised, and the connection between the frontend and backend is handled within the script. 
+
+The model can be optimised, and you can use Pruna AI to do that. Check out the [tutorial](https://www.koyeb.com/tutorials/deploy-flux-models-with-pruna-ai-for-8x-faster-inference-on-koyeb) about how to use Pruna AI on a Flux model and follow the same steps.  
 
 ### Step 2: Frontend Setup
 
@@ -64,7 +62,7 @@ The [`main.py`](backend/main.py) contains the FastAPI as a backend wrapper, the 
    pnpm run dev
    ```
  
-The forntend is done with sveltekit and it has three parts: 
+The frontend is done with SvelteKit, and it has three parts: 
 
 1. **Main Page (`src/routes/+page.svelte`):**
    - Entry point of the application
@@ -84,7 +82,7 @@ The forntend is done with sveltekit and it has three parts:
 
 ### Deployment on Koyeb
 
-Deploy the app to Koyeb using the control panel or via the [Koyeb CLI](https://www.koyeb.com/tutorials/deploy-flux-models-with-pruna-ai-for-8x-faster-inference-on-koyeb#deploy-the-optimized-model-on-koyeb). You can check the configuration for deploying using the controlpanel on the buttons above. 
+Deploy the app to Koyeb using the control panel or via the [Koyeb CLI](https://www.koyeb.com/tutorials/deploy-flux-models-with-pruna-ai-for-8x-faster-inference-on-koyeb#deploy-the-optimized-model-on-koyeb). You can check the configuration for deploying using the control panel on the buttons above. 
 
 #### Koyeb CLI Backend 
 ```bash 
