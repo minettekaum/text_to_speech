@@ -174,13 +174,10 @@ def process_audio_prompt(audio_prompt: AudioPrompt) -> Optional[str]:
 
     logger.info(f"Processing audio prompt: shape={audio_data.shape}, sample_rate={sample_rate}, dtype={audio_data.dtype}")
     
-    # Normalize data type
     audio_data = normalize_audio_dtype(audio_data)
-    
-    # Convert to mono if needed
+
     audio_data = convert_to_mono(audio_data)
     
-    # Save to temporary file
     return save_audio_to_temp_file(audio_data, sample_rate)
 
 @app.post("/api/generate")

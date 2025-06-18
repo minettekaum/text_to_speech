@@ -1,11 +1,17 @@
 <script lang="ts">
-    import Message from '../components/Message.svelte';
+    import ChatInterface from '../components/ChatInterface.svelte';
+    import GenerationSettings from '../components/GenerationSettings.svelte';
+    import SoundEffectsPanel from '../components/SoundEffectsPanel.svelte';
+    import AudioControls from '../components/AudioControls.svelte';
+    import GenerationButton from '../components/GenerationButton.svelte';
+    import AudioOutput from '../components/AudioOutput.svelte';
     
     interface Message {
         speaker: string;
         text: string;
     }
 
+    // Main state
     let messages: Message[] = [];
     let currentInput = '';
     let availableSpeakers: string[] = ['[S1]'];
@@ -15,64 +21,19 @@
     let selectedEffect = '';
     let error: string | null = null;
     let isRecording = false;
-    let mediaRecorder: MediaRecorder | null = null;
-    let audioChunks: BlobPart[] = [];
     let recordedAudioUrl: string | null = null;
     let uploadedAudioUrl: string | null = null;
+    let editingMessageIndex: number | null = null;
+    let editText = '';
+    let generationProgress = 0;
 
+    // Generation settings
     let maxNewTokens = 1024;  
     let cfgScale = 3.0;      
     let temperature = 1.2;   
     let topP = 0.9;          
     let cfgFilterTopK = 32;   
-    let speedFactor = 0.9;    
-
-    let generationProgress = 0;
-    let progressInterval: number;
-
-    let editingMessageIndex: number | null = null;
-    let editText = '';
-
-    const soundEffects = [
-        'burps',
-        'clears throat',
-        'coughs',
-        'exhales',
-        'gasps',
-        'groans',
-        'humming',
-        'laughs',
-        'mumbles',
-        'screams',
-        'sighs',
-        'sneezes',
-    ];
-
-    function formatSpeakerName(speaker: string) {
-        return speaker.replace('[S1]', 'Speaker 1').replace('[S2]', 'Speaker 2');
-    }
-
-    function handleEdit(event: CustomEvent<number>) {
-        editingMessageIndex = event.detail;
-        editText = messages[event.detail].text;
-    }
-
-    function handleDelete(event: CustomEvent<number>) {
-        messages = messages.filter((_, i) => i !== event.detail);
-    }
-
-    function handleSave() {
-        if (editingMessageIndex !== null) {
-            messages[editingMessageIndex].text = editText;
-            editingMessageIndex = null;
-            editText = '';
-        }
-    }
-
-    function handleCancel() {
-        editingMessageIndex = null;
-        editText = '';
-    }
+    let speedFactor = 0.9;
 
     function updateAvailableSpeakers() {
         if (messages.length === 0) {
@@ -88,274 +49,68 @@
         }
     }
 
-    function addMessage() {
-        if (currentInput.trim()) {
-            messages = [...messages, { speaker: selectedSpeaker, text: currentInput.trim() }];
-            currentInput = '';
-            editingMessageIndex = null;
-            selectedSpeaker = selectedSpeaker === '[S1]' ? '[S2]' : '[S1]';
-            updateAvailableSpeakers();
-        }
-    }
-
-    function handleKeyPress(event: KeyboardEvent) {
-        if (event.key === 'Enter' && !event.shiftKey) {
-            event.preventDefault();
-            addMessage();
-        }
-    }
-
-    function insertSoundEffect() {
-        if (selectedEffect) {
-            const effect = `(${selectedEffect})`;
-            currentInput = currentInput + (currentInput.endsWith(' ') ? '' : ' ') + effect + ' ';
-            selectedEffect = '';
-        }
-    }
-
-    async function handleGenerate() {
-        if (messages.length === 0) return;
-        
-        isProcessing = true;
-        generationProgress = 0;
-        error = null;
-        
-        try {
-            // Start progress simulation
-            progressInterval = setInterval(() => {
-                if (generationProgress < 90) {
-                    generationProgress += Math.random() * 15;
-                    if (generationProgress > 90) generationProgress = 90;
-                }
-            }, 300);
-
-            // Combine all messages into a single text, maintaining speaker labels
-            const combinedText = messages.map(msg => `${msg.speaker}: ${msg.text}`).join('\n');
-            
-            // Define the request data type
-            interface RequestData {
-                text_input: string;
-                max_new_tokens: number;
-                cfg_scale: number;
-                temperature: number;
-                top_p: number;
-                cfg_filter_top_k: number;
-                speed_factor: number;
-                audio_prompt_input?: {
-                    sample_rate: number;
-                    audio_data: number[];
-                };
-            }
-
-            // Prepare the request data
-            const requestData: RequestData = {
-                text_input: combinedText,
-                max_new_tokens: maxNewTokens,
-                cfg_scale: cfgScale,
-                temperature: temperature,
-                top_p: topP,
-                cfg_filter_top_k: cfgFilterTopK,
-                speed_factor: speedFactor
-            };
-
-            // If there's an audio file, convert it to the format the backend expects
-            const referenceAudioUrl = uploadedAudioUrl || recordedAudioUrl;
-            if (referenceAudioUrl) {
-                try {
-                    // Create AudioContext
-                    const audioContext = new AudioContext();
-                    
-                    // First convert the audio to a blob
-                    const response = await fetch(referenceAudioUrl);
-                    if (!response.ok) {
-                        throw new Error(`Failed to fetch audio file: ${response.status} ${response.statusText}`);
-                    }
-                    const blob = await response.blob();
-                    
-                    // Convert blob to array buffer
-                    const arrayBuffer = await blob.arrayBuffer();
-                    
-                    // Decode the audio data
-                    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-                    
-                    // Get the Float32Array from the first channel and convert to regular array
-                    const channelData = audioBuffer.getChannelData(0);
-                    
-                    // Ensure the data is in the correct range (-1 to 1)
-                    const normalizedData = Array.from(channelData).map(x => 
-                        Math.max(-1, Math.min(1, x)) // Clamp values between -1 and 1
-                    );
-
-                    // Resize the audio data to match the expected tensor dimensions
-                    const targetLength = 3072; // The expected size from the error message
-                    let resizedData;
-                    
-                    if (normalizedData.length > targetLength) {
-                        // If data is too long, take a sample from the middle
-                        const start = Math.floor((normalizedData.length - targetLength) / 2);
-                        resizedData = normalizedData.slice(start, start + targetLength);
-                    } else if (normalizedData.length < targetLength) {
-                        // If data is too short, pad with zeros
-                        resizedData = new Array(targetLength).fill(0);
-                        resizedData.splice(0, normalizedData.length, ...normalizedData);
-                    } else {
-                        resizedData = normalizedData;
-                    }
-                    
-                    requestData.audio_prompt_input = {
-                        sample_rate: audioBuffer.sampleRate,
-                        audio_data: resizedData
-                    };
-                    
-                    // Close the audio context
-                    await audioContext.close();
-                    
-                } catch (audioError: unknown) {
-                    console.error('Detailed audio processing error:', audioError);
-                    error = `Failed to process audio file: ${audioError instanceof Error ? audioError.message : 'Unknown error'}. Please try a different file.`;
-                    isProcessing = false;
-                    return;
-                }
-            }
-
-            const response = await fetch('https://gothic-sara-ann-challenge-8bad5bca.koyeb.app/api/generate', {
-            //const response = await fetch('http://127.0.0.1:8000/api/generate', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(requestData)
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => null);
-                console.error('Server response error:', {
-                    status: response.status,
-                    statusText: response.statusText,
-                    errorData: errorData
-                });
-                throw new Error(errorData?.detail || 'Failed to generate audio');
-            }
-
-            // Get the audio blob from the response
-            const blob = await response.blob();
-            
-            if (blob.size === 0) {
-                throw new Error('Generated audio is empty');
-            }
-
-            // Set progress to 100% when generation is complete
-            generationProgress = 100;
-            
-            // Clean up any existing audio URL
-            if (audioUrl) {
-                URL.revokeObjectURL(audioUrl);
-            }
-
-            // Create a new URL for the audio blob and assign to the global audioUrl
-            audioUrl = URL.createObjectURL(blob);
-
-            // Test the audio to make sure it loads correctly
-            const audioTest = new Audio(audioUrl);
-            audioTest.onerror = (e) => {
-                console.error('Audio loading error:', e);
-                error = 'Error loading the generated audio';
-            };
-            audioTest.onloadeddata = () => {
-                error = null; // Clear any previous errors
-            };
-
-        } catch (err: unknown) {
-            console.error('Generation error:', err);
-            error = err instanceof Error ? err.message : 'Failed to generate audio. Please try again.';
-            if (audioUrl) {
-                URL.revokeObjectURL(audioUrl);
-                audioUrl = null;
-            }
-        } finally {
-            clearInterval(progressInterval);
-            setTimeout(() => {
-                isProcessing = false;
-                generationProgress = 0;
-            }, 500); // Keep 100% visible briefly
-        }
-    }
-
-    async function startRecording() {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(stream);
-            audioChunks = [];
-
-            mediaRecorder.ondataavailable = (event) => {
-                audioChunks.push(event.data);
-            };
-
-            mediaRecorder.onstop = () => {
-                const audioBlob = new Blob(audioChunks, { type: 'audio/mp3' });
-                if (recordedAudioUrl) {
-                    URL.revokeObjectURL(recordedAudioUrl);
-                }
-                recordedAudioUrl = URL.createObjectURL(audioBlob);
-            };
-
-            mediaRecorder.start();
-            isRecording = true;
-        } catch (err) {
-            console.error('Recording error:', err);
-            error = 'Failed to start recording. Please check your microphone permissions.';
-        }
-    }
-
-    function stopRecording() {
-        if (mediaRecorder && isRecording) {
-            mediaRecorder.stop();
-            mediaRecorder.stream.getTracks().forEach(track => track.stop());
-            isRecording = false;
-        }
-    }
-
-    function handleFileUpload(event: Event) {
-        const input = event.target as HTMLInputElement;
-        const file = input.files?.[0];
-        
-        if (file) {
-            if (file.type !== 'audio/mp3' && file.type !== 'audio/mpeg') {
-                error = 'Please upload an MP3 file.';
-                return;
-            }
-
-            if (uploadedAudioUrl) {
-                URL.revokeObjectURL(uploadedAudioUrl);
-            }
-            uploadedAudioUrl = URL.createObjectURL(file);
-            error = null;
-        }
-    }
-
-    function loadExampleDialogue1() {
-        messages = [
-            { speaker: '[S1]', text: 'Hey, how was your weekend?' },
-            { speaker: '[S2]', text: 'Amazing! Went hiking in the mountains. The view was breathtaking!' },
-            { speaker: '[S1]', text: 'That sounds incredible! I need to get out more.' },
-            { speaker: '[S2]', text: 'You should join me next time! The trail I found is perfect for beginners (laughs)' }
-        ];
+    // Event handlers for ChatInterface
+    function handleMessagesUpdated(event: CustomEvent<Message[]>) {
+        messages = event.detail;
         updateAvailableSpeakers();
     }
 
-    function loadExampleDialogue2() {
-        messages = [
-            { speaker: '[S1]', text: 'I could really use a French coffee right now.' },
-            { speaker: '[S2]', text: 'Oh! I found this charming French café around the corner. So authentic!' },
-            { speaker: '[S1]', text: 'Really? Do they have fresh pastries?' },
-            { speaker: '[S2]', text: 'Yes! Their chocolate croissants are amazing! And the owner is from Paris (humming)' }
-        ];
+    function handleSpeakerChanged(event: CustomEvent<string>) {
+        selectedSpeaker = event.detail;
+    }
+
+    // Event handlers for SoundEffectsPanel
+    function handleInputUpdated(event: CustomEvent<string>) {
+        currentInput = event.detail;
+    }
+
+    function handleLoadExample(event: CustomEvent<Message[]>) {
+        messages = event.detail;
         updateAvailableSpeakers();
     }
 
-    function emptyChat() {
+    function handleEmptyChat() {
         messages = [];
         updateAvailableSpeakers();
+    }
+
+    // Event handlers for AudioControls
+    function handleAudioRecorded(event: CustomEvent<string>) {
+        recordedAudioUrl = event.detail;
+    }
+
+    function handleAudioUploaded(event: CustomEvent<string>) {
+        uploadedAudioUrl = event.detail;
+    }
+
+    function handleRecordingStateChanged(event: CustomEvent<boolean>) {
+        isRecording = event.detail;
+    }
+
+    function handleErrorUpdated(event: CustomEvent<string | null>) {
+        error = event.detail;
+    }
+
+    // Event handlers for GenerationButton
+    function handleAudioGenerated(event: CustomEvent<string>) {
+        // Clean up any existing audio URL
+        if (audioUrl) {
+            URL.revokeObjectURL(audioUrl);
+        }
+        audioUrl = event.detail;
+        error = null;
+    }
+
+    function handleGenerationError(event: CustomEvent<string>) {
+        error = event.detail;
+        if (audioUrl) {
+            URL.revokeObjectURL(audioUrl);
+            audioUrl = null;
+        }
+    }
+
+    function handleProcessingStateChanged(event: CustomEvent<boolean>) {
+        isProcessing = event.detail;
     }
 </script>
 
@@ -368,352 +123,69 @@
     <section class="converter-section">
         <div class="main-input-container">
             <div class="text-input-section">
-                <div class="text-input-frame">
-                    <div class="frame-header">
-                        <h3>Chat Interface</h3>
-                        <p class="helper-text">Type messages for different speakers to generate conversation</p>
-                    </div>
-                    <div class="messages">
-                        {#each messages as message, i}
-                            <Message 
-                                {message}
-                                {i}
-                                {editingMessageIndex}
-                                {editText}
-                                on:edit={handleEdit}
-                                on:delete={handleDelete}
-                                on:save={handleSave}
-                                on:cancel={handleCancel}
-                            />
-                        {/each}
-                    </div>
-                    <div class="input-area">
-                        <div class="input-container">
-                            <select 
-                                bind:value={selectedSpeaker}
-                                class="speaker-select"
-                            >
-                                {#each availableSpeakers as speaker}
-                                    <option value={speaker}>{formatSpeakerName(speaker)}</option>
-                                {/each}
-                            </select>
-                            <textarea
-                                bind:value={currentInput}
-                                placeholder="Type your message..."
-                                rows="1"
-                                on:keydown={handleKeyPress}
-                            ></textarea>
-                            <button 
-                                class="send-button"
-                                on:click={addMessage}
-                                disabled={!currentInput.trim()}
-                                aria-label="Send message"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                    <line x1="22" y1="2" x2="11" y2="13"></line>
-                                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                                </svg>
-                            </button>
-                        </div>
-                        <div class="effect-controls">
-                            <select
-                                id="effect-select"
-                                bind:value={selectedEffect}
-                                class="effect-select"
-                                on:change={insertSoundEffect}
-                            >
-                                <option value="">Add sound effect...</option>
-                                {#each soundEffects as effect}
-                                    <option value={effect}>{effect}</option>
-                                {/each}
-                            </select>
-                            <div class="example-buttons">
-                                <button class="example-button" on:click={loadExampleDialogue1}>
-                                    Example: Hiking Chat
-                                </button>
-                                <button class="example-button" on:click={loadExampleDialogue2}>
-                                    Example: Coffee Chat
-                                </button>
-                                <button class="example-button" on:click={emptyChat}>
-                                    Empty Chat
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <ChatInterface 
+                    bind:messages={messages}
+                    bind:currentInput={currentInput}
+                    bind:availableSpeakers={availableSpeakers}
+                    bind:selectedSpeaker={selectedSpeaker}
+                    bind:editingMessageIndex={editingMessageIndex}
+                    bind:editText={editText}
+                    on:messagesUpdated={handleMessagesUpdated}
+                    on:speakerChanged={handleSpeakerChanged}
+                />
+                <SoundEffectsPanel 
+                    bind:selectedEffect={selectedEffect}
+                    bind:currentInput={currentInput}
+                    on:inputUpdated={handleInputUpdated}
+                    on:loadExample={handleLoadExample}
+                    on:emptyChat={handleEmptyChat}
+                />
             </div>
 
             <div class="side-controls">
-                <div class="generation-settings">
-                    <div class="frame-header">
-                        <h3>Generation Settings</h3>
-                        <p class="helper-text">Adjust parameters to control the generated speech</p>
-                    </div>
-                    <div class="settings-panel">
-                        <div class="parameter-control">
-                            <label for="max-tokens">
-                                Max New Tokens ({maxNewTokens})
-                                <div class="tooltip-container">
-                                    <button class="tooltip-trigger" on:mouseenter={(e) => {
-                                        const tooltip = e.currentTarget.nextElementSibling as HTMLElement;
-                                        if (!tooltip) return;
-                                        const rect = e.currentTarget.getBoundingClientRect();
-                                        tooltip.style.top = (rect.top - tooltip.offsetHeight - 10) + 'px';
-                                        tooltip.style.left = (rect.left + (rect.width / 2) - (tooltip.offsetWidth / 2)) + 'px';
-                                    }}>?</button>
-                                    <div class="tooltip">Controls the maximum length of generated audio. Higher values allow for longer audio.</div>
-                                </div>
-                            </label>
-                            <input 
-                                type="range" 
-                                id="max-tokens"
-                                bind:value={maxNewTokens}
-                                min="860"
-                                max="3072"
-                                step="1"
-                            />
-                        </div>
-
-                        <div class="parameter-control">
-                            <label for="cfg-scale">
-                                CFG Scale ({cfgScale})
-                                <div class="tooltip-container">
-                                    <button class="tooltip-trigger" on:mouseenter={(e) => {
-                                        const tooltip = e.currentTarget.nextElementSibling as HTMLElement;
-                                        if (!tooltip) return;
-                                        const rect = e.currentTarget.getBoundingClientRect();
-                                        tooltip.style.top = (rect.top - tooltip.offsetHeight - 10) + 'px';
-                                        tooltip.style.left = (rect.left + (rect.width / 2) - (tooltip.offsetWidth / 2)) + 'px';
-                                    }}>?</button>
-                                    <div class="tooltip">Controls how closely to follow the prompt. Higher values produce more faithful but potentially less natural output.</div>
-                                </div>
-                            </label>
-                            <input 
-                                type="range" 
-                                id="cfg-scale"
-                                bind:value={cfgScale}
-                                min="1"
-                                max="5"
-                                step="0.1"
-                            />
-                        </div>
-
-                        <div class="parameter-control">
-                            <label for="temperature">
-                                Temperature ({temperature})
-                                <div class="tooltip-container">
-                                    <button class="tooltip-trigger" on:mouseenter={(e) => {
-                                        const tooltip = e.currentTarget.nextElementSibling as HTMLElement;
-                                        if (!tooltip) return;
-                                        const rect = e.currentTarget.getBoundingClientRect();
-                                        tooltip.style.top = (rect.top - tooltip.offsetHeight - 10) + 'px';
-                                        tooltip.style.left = (rect.left + (rect.width / 2) - (tooltip.offsetWidth / 2)) + 'px';
-                                    }}>?</button>
-                                    <div class="tooltip">Controls randomness in generation. Higher values produce more varied but potentially less consistent output.</div>
-                                </div>
-                            </label>
-                            <input 
-                                type="range" 
-                                id="temperature"
-                                bind:value={temperature}
-                                min="1"
-                                max="1.5"
-                                step="0.1"
-                            />
-                        </div>
-
-                        <div class="parameter-control">
-                            <label for="top-p">
-                                Top P ({topP})
-                                <div class="tooltip-container">
-                                    <button class="tooltip-trigger" on:mouseenter={(e) => {
-                                        const tooltip = e.currentTarget.nextElementSibling as HTMLElement;
-                                        if (!tooltip) return;
-                                        const rect = e.currentTarget.getBoundingClientRect();
-                                        tooltip.style.top = (rect.top - tooltip.offsetHeight - 10) + 'px';
-                                        tooltip.style.left = (rect.left + (rect.width / 2) - (tooltip.offsetWidth / 2)) + 'px';
-                                    }}>?</button>
-                                    <div class="tooltip">Controls diversity in sampling. Higher values allow for more diverse outputs.</div>
-                                </div>
-                            </label>
-                            <input 
-                                type="range" 
-                                id="top-p"
-                                bind:value={topP}
-                                min="0.8"
-                                max="1"
-                                step="0.01"
-                            />
-                        </div>
-
-                        <div class="parameter-control">
-                            <label for="cfg-filter-top-k">
-                                CFG Filter Top K ({cfgFilterTopK})
-                                <div class="tooltip-container">
-                                    <button class="tooltip-trigger" on:mouseenter={(e) => {
-                                        const tooltip = e.currentTarget.nextElementSibling as HTMLElement;
-                                        if (!tooltip) return;
-                                        const rect = e.currentTarget.getBoundingClientRect();
-                                        tooltip.style.top = (rect.top - tooltip.offsetHeight - 10) + 'px';
-                                        tooltip.style.left = (rect.left + (rect.width / 2) - (tooltip.offsetWidth / 2)) + 'px';
-                                    }}>?</button>
-                                    <div class="tooltip">Controls the number of top tokens to consider during generation. Higher values allow for more variety.</div>
-                                </div>
-                            </label>
-                            <input 
-                                type="range" 
-                                id="cfg-filter-top-k"
-                                bind:value={cfgFilterTopK}
-                                min="15"
-                                max="50"
-                                step="1"
-                            />
-                        </div>
-
-                        <div class="parameter-control">
-                            <label for="speed-factor">
-                                Speed Factor ({speedFactor})
-                                <div class="tooltip-container">
-                                    <button class="tooltip-trigger" on:mouseenter={(e) => {
-                                        const tooltip = e.currentTarget.nextElementSibling as HTMLElement;
-                                        if (!tooltip) return;
-                                        const rect = e.currentTarget.getBoundingClientRect();
-                                        tooltip.style.top = (rect.top - tooltip.offsetHeight - 10) + 'px';
-                                        tooltip.style.left = (rect.left + (rect.width / 2) - (tooltip.offsetWidth / 2)) + 'px';
-                                    }}>?</button>
-                                    <div class="tooltip">Controls the speed of generated speech. Higher values produce faster speech.</div>
-                                </div>
-                            </label>
-                            <input 
-                                type="range" 
-                                id="speed-factor"
-                                bind:value={speedFactor}
-                                min="0.8"
-                                max="1"
-                                step="0.01"
-                            />
-                        </div>
-                    </div>
-                </div>
+                <GenerationSettings 
+                    bind:maxNewTokens={maxNewTokens}
+                    bind:cfgScale={cfgScale}
+                    bind:temperature={temperature}
+                    bind:topP={topP}
+                    bind:cfgFilterTopK={cfgFilterTopK}
+                    bind:speedFactor={speedFactor}
+                />
             </div>
         </div>
 
-        <div class="audio-input-section">
-            <h3>Reference Audio (optional)</h3>
-            <div class="audio-controls">
-                <div class="audio-button-group">
-                    <label class="audio-button" for="audio-file" title="Upload Audio" aria-label="Upload audio file">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                            <polyline points="17 8 12 3 7 8"/>
-                            <line x1="12" y1="3" x2="12" y2="15"/>
-                        </svg>
-                        <input
-                            type="file"
-                            id="audio-file"
-                            accept="audio/mp3,audio/mpeg"
-                            on:change={handleFileUpload}
-                            class="hidden-input"
-                        />
-                    </label>
+        <AudioControls 
+            bind:isRecording={isRecording}
+            bind:recordedAudioUrl={recordedAudioUrl}
+            bind:uploadedAudioUrl={uploadedAudioUrl}
+            bind:error={error}
+            on:audioRecorded={handleAudioRecorded}
+            on:audioUploaded={handleAudioUploaded}
+            on:recordingStateChanged={handleRecordingStateChanged}
+            on:errorUpdated={handleErrorUpdated}
+        />
 
-                    {#if isRecording}
-                        <button 
-                            class="audio-button recording"
-                            on:click={stopRecording}
-                            title="Stop Recording"
-                            aria-label="Stop recording"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <rect x="6" y="6" width="12" height="12" rx="2"/>
-                            </svg>
-                        </button>
-                    {:else}
-                        <button 
-                            class="audio-button"
-                            on:click={startRecording}
-                            title="Start Recording"
-                            aria-label="Start recording"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
-                                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                                <line x1="12" y1="19" x2="12" y2="22"/>
-                            </svg>
-                        </button>
-                    {/if}
-                </div>
+        <GenerationButton 
+            bind:messages={messages}
+            bind:isProcessing={isProcessing}
+            bind:generationProgress={generationProgress}
+            bind:recordedAudioUrl={recordedAudioUrl}
+            bind:uploadedAudioUrl={uploadedAudioUrl}
+            bind:maxNewTokens={maxNewTokens}
+            bind:cfgScale={cfgScale}
+            bind:temperature={temperature}
+            bind:topP={topP}
+            bind:cfgFilterTopK={cfgFilterTopK}
+            bind:speedFactor={speedFactor}
+            on:audioGenerated={handleAudioGenerated}
+            on:generationError={handleGenerationError}
+            on:processingStateChanged={handleProcessingStateChanged}
+        />
 
-                <div class="audio-preview-container">
-                    {#if uploadedAudioUrl || recordedAudioUrl}
-                        <div class="audio-preview">
-                            <audio controls src={uploadedAudioUrl || recordedAudioUrl} preload="auto">
-                                Your browser does not support the audio element.
-                            </audio>
-                        </div>
-                    {/if}
-                </div>
-            </div>
-        </div>
-
-        <div class="controls">
-            <button
-                class="generate-button"
-                class:processing={isProcessing}
-                on:click={handleGenerate}
-                disabled={!messages.length || isProcessing}
-            >
-                <span class="button-text">
-                    {#if isProcessing}
-                        Generating... {Math.round(generationProgress)}%
-                    {:else}
-                        Generate Audio
-                    {/if}
-                </span>
-                {#if isProcessing}
-                    <div class="progress-bar" style="width: {generationProgress}%"></div>
-                {/if}
-            </button>
-        </div>
-
-        <div class="audio-input-section">
-            <h3>Generated Audio</h3>
-            <div class="audio-controls">
-                <div class="audio-preview-container">
-                    {#if error}
-                        <p class="error-message">{error}</p>
-                    {:else if audioUrl}
-                        <div class="audio-preview">
-                            <audio controls src={audioUrl} preload="auto">
-                                Your browser does not support the audio element.
-                            </audio>
-                            <button 
-                                class="download-button"
-                                on:click={() => {
-                                    if (!audioUrl) return;
-                                    const link = document.createElement('a');
-                                    link.href = audioUrl;
-                                    link.download = `generated_audio_${new Date().getTime()}.wav`;
-                                    document.body.appendChild(link);
-                                    link.click();
-                                    document.body.removeChild(link);
-                                }}
-                                title="Download audio"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                                    <polyline points="7 10 12 15 17 10"/>
-                                    <line x1="12" y1="15" x2="12" y2="3"/>
-                                </svg>
-                                Download
-                            </button>
-                        </div>
-                    {:else}
-                        <p class="placeholder-text">Your generated audio will appear here</p>
-                    {/if}
-                </div>
-            </div>
-        </div>
+        <AudioOutput 
+            bind:audioUrl={audioUrl}
+            bind:error={error}
+        />
     </section>
 </main>
 
@@ -772,513 +244,9 @@
         gap: 0.5rem;
     }
 
-    .text-input-frame {
-        background: #fcfcfc;
-        border-radius: 16px;
-        padding: 1rem;
-        display: flex;
-        flex-direction: column;
-        height: 100%;
-        min-height: calc(200px + 180px + 3rem);
-        border: 1px solid #e5e7eb;
-    }
-
-    .frame-header {
-        padding-bottom: 0.5rem;
-        border-bottom: 1px solid #eee;
-        margin-bottom: 0.35rem;
-    }
-
-    .frame-header h3 {
-        font-size: 0.9rem;
-        margin: 0;
-    }
-
-    .helper-text {
-        font-size: 0.8rem;
-        color: #666;
-    }
-
-    .messages {
-        flex: 1;
-        min-height: 200px;
-        max-height: 200px;
-        overflow-y: auto;
-        padding: 0.35rem 1rem;
-        display: flex;
-        flex-direction: column;
-        gap: 0.2rem;
-    }
-
-    @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(10px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-
-    /* Speaker colors */
-    .speaker-select option[value="[S1]"] {
-        color: #6366f1;
-    }
-
-    .speaker-select option[value="[S2]"] {
-        color: #ec4899;
-    }
-
-    .input-area {
-        margin-top: auto;
-        padding-top: 0.5rem;
-        border-top: 1px solid #eee;
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-    }
-
-    .input-container {
-        display: flex;
-        gap: 0.5rem;
-        align-items: center;
-        background: white;
-        border: 1px solid #eee;
-        border-radius: 12px;
-        padding: 0.5rem;
-    }
-
-    .speaker-select {
-        width: 100px;
-        padding: 0.4rem;
-        border: none;
-        background: #f5f5f5;
-        border-radius: 6px;
-        font-size: 0.85rem;
-        color: #666;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        -webkit-appearance: none;
-        -moz-appearance: none;
-        appearance: none;
-        background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23666%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
-        background-repeat: no-repeat;
-        background-position: right 0.5rem center;
-        background-size: 0.65em auto;
-        padding-right: 1.5rem;
-    }
-
-    .speaker-select:hover {
-        background-color: #efefef;
-        color: #333;
-    }
-
-    textarea {
-        flex: 1;
-        padding: 0.5rem;
-        border: none;
-        border-radius: 8px;
-        font-size: 0.95rem;
-        font-family: inherit;
-        resize: none;
-        transition: all 0.2s ease;
-        background: transparent;
-        min-height: 20px;
-        max-height: 120px;
-        line-height: 1.4;
-    }
-
-    textarea::placeholder {
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-        color: #666;
-        opacity: 0.8;
-    }
-
-    textarea:focus {
-        outline: none;
-        background: transparent;
-    }
-
-    .send-button {
-        background: #333;
-        color: white;
-        border: none;
-        border-radius: 8px;
-        padding: 0.5rem;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .send-button:hover:not(:disabled) {
-        background: #222;
-        transform: translateY(-1px);
-    }
-
-    .send-button:disabled {
-        background: #ddd;
-        cursor: not-allowed;
-    }
-
-    .audio-input-section {
-        background: #fcfcfc;
-        border-radius: 16px;
-        padding: 1rem;
-        margin-bottom: 1rem;
-        border: 1px solid #e5e7eb;
-    }
-
-    .audio-input-section h3 {
-        font-size: 0.9rem;
-        margin: 0 0 0.75rem 0;
-        font-weight: 500;
-    }
-
-    .audio-controls {
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-        min-height: 45px;
-        justify-content: flex-start;
-    }
-
-    .audio-button-group {
-        display: flex;
-        gap: 2.5rem;
-        justify-content: center;
-        margin-left: 2rem;
-        margin-bottom: 0.5rem;
-    }
-
-    .audio-button {
-        width: 130px;
-        height: 38px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: white;
-        border: 1px solid #eee;
-        border-radius: 8px;
-        color: #666;
-        cursor: pointer;
-        transition: all 0.2s ease;
-    }
-
-    .audio-button:hover {
-        background: #f5f5f5;
-        color: #333;
-    }
-
-    .audio-button.recording {
-        background: #fee2e2;
-        border-color: #fecaca;
-        color: #dc2626;
-    }
-
-    .hidden-input {
-        display: none;
-    }
-
-    .audio-preview-container {
-        flex: 1;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 45px;
-    }
-
-    .audio-preview {
-        width: 100%;
-        max-width: 500px;
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-        align-items: center;
-    }
-
-    .audio-preview audio {
-        width: 100%;
-        height: 36px;
-    }
-
-    .download-button {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        background: #333;
-        color: white;
-        border: none;
-        border-radius: 8px;
-        padding: 0.75rem 1.25rem;
-        font-size: 0.9rem;
-        cursor: pointer;
-        transition: all 0.2s ease;
-    }
-
-    .download-button:hover {
-        background: #222;
-        transform: translateY(-1px);
-    }
-
-    .controls {
-        padding: 0 0 2rem 0;
-    }
-
-    .generate-button {
-        background: #333;
-        color: white;
-        padding: 1.25rem;
-        border: none;
-        border-radius: 12px;
-        font-size: 1rem;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        width: 100%;
-        font-weight: 500;
-        letter-spacing: 0.02em;
-        position: relative;
-        overflow: hidden;
-    }
-
-    .generate-button:hover:not(:disabled) {
-        background: #222;
-        transform: translateY(-1px);
-    }
-
-    .generate-button:disabled:not(.processing) {
-        background: #ddd;
-        cursor: not-allowed;
-    }
-
-    .generate-button.processing {
-        cursor: wait;
-    }
-
-    .progress-bar {
-        position: absolute;
-        left: 0;
-        top: 0;
-        height: 100%;
-        background: #222;
-        transition: width 0.3s ease;
-        z-index: 1;
-    }
-
-    .button-text {
-        position: relative;
-        z-index: 2;
-    }
-
-    .audio-controls {
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-        min-height: 45px;
-        justify-content: flex-start;
-    }
-
-    .audio-preview-container {
-        flex: 1;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 45px;
-    }
-
-    .audio-preview {
-        width: 100%;
-        max-width: 500px;
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-        align-items: center;
-    }
-    
-    .audio-preview audio {
-        width: 100%;
-        height: 40px;
-    }
-
-    .error-message {
-        color: #e53e3e;
-        font-weight: 500;
-        margin: 0;
-        font-size: 0.9rem;
-    }
-
-    .placeholder-text {
-        color: #666;
-        margin: 0;
-        font-size: 0.9rem;
-    }
-
-    .effect-controls {
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-        padding: 0;
-    }
-
-    .effect-select {
-        width: 100%;
-        padding: 0.4rem;
-        border: none;
-        background: #f5f5f5;
-        border-radius: 6px;
-        font-size: 0.85rem;
-        color: #666;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        -webkit-appearance: none;
-        -moz-appearance: none;
-        appearance: none;
-        background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23666%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
-        background-repeat: no-repeat;
-        background-position: right 0.5rem center;
-        background-size: 0.65em auto;
-        padding-right: 1.5rem;
-    }
-
-    .effect-select:hover {
-        background-color: #efefef;
-        color: #333;
-    }
-
-    .effect-select:focus {
-        outline: none;
-        border-color: #333;
-        color: #333;
-    }
-
-    .example-buttons {
-        display: flex;
-        gap: 0.5rem;
-        margin-top: 0.25rem;
-    }
-
-    .example-button {
-        flex: 1;
-        padding: 0.4rem;
-        background: #f5f5f5;
-        border: none;
-        border-radius: 6px;
-        font-size: 0.85rem;
-        color: #666;
-        cursor: pointer;
-        transition: all 0.2s ease;
-    }
-
-    .example-button:hover {
-        background: #efefef;
-        color: #333;
-    }
-
-    .generation-settings {
-        background: #fcfcfc;
-        border-radius: 16px;
-        padding: 1rem;
-        position: sticky;
-        top: 2rem;
-        height: auto;
-        min-height: calc(200px + 180px + 3rem);
-        display: flex;
-        flex-direction: column;
-        border: 1px solid #e5e7eb;
-    }
-
     .side-controls {
         display: flex;
         flex-direction: column;
-    }
-
-    .settings-panel {
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        flex: 1;
-        padding-right: 0.25rem;
-        overflow: visible;
-        position: relative;
-        gap: 1.5rem;
-    }
-
-    .parameter-control {
-        margin-bottom: 0;
-        flex-shrink: 0;
-        padding: 0.25rem 0;
-        position: relative;
-    }
-
-    .parameter-control label {
-        font-size: 0.85rem;
-        margin-bottom: 0.35rem;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
-
-    .tooltip-container {
-        position: relative;
-        display: inline-block;
-    }
-
-    .tooltip-trigger {
-        width: 16px;
-        height: 16px;
-        border-radius: 50%;
-        background: #eee;
-        color: #666;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 0.75rem;
-        cursor: help;
-        transition: all 0.2s ease;
-        border: none;
-        padding: 0;
-    }
-
-    .tooltip-trigger:hover {
-        background: #e0e0e0;
-        transform: scale(1.1);
-    }
-
-    .tooltip {
-        display: none;
-        position: fixed;
-        background: #333;
-        color: white;
-        padding: 0.6rem 0.8rem;
-        border-radius: 8px;
-        font-size: 0.85rem;
-        width: 220px;
-        z-index: 1000;
-        pointer-events: none;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-    }
-
-    .tooltip-trigger:hover + .tooltip {
-        display: block;
-    }
-
-    .parameter-control input[type="range"] {
-        width: 100%;
-        height: 2px;
-        background: #eee;
-        border-radius: 1px;
-        outline: none;
-        -webkit-appearance: none;
-    }
-
-    .parameter-control input[type="range"]::-webkit-slider-thumb {
-        -webkit-appearance: none;
-        width: 14px;
-        height: 14px;
-        background: #333;
-        border-radius: 50%;
-        cursor: pointer;
-        transition: all 0.2s ease;
-    }
-
-    .parameter-control input[type="range"]::-webkit-slider-thumb:hover {
-        transform: scale(1.2);
     }
 
     @media (max-width: 1200px) {
@@ -1300,14 +268,29 @@
         .main-input-container {
             grid-template-columns: 1fr;
             gap: 1.5rem;
+            min-height: auto;
         }
 
-        .text-input-section,
         .side-controls {
-            position: static;
-            width: auto;
-            grid-column: 1;
-            justify-self: stretch;
+            order: -1;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .container {
+            padding: 1rem;
+        }
+        
+        .converter-section {
+            padding: 1rem;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+        }
+
+        .subtitle {
+            font-size: 1rem;
         }
     }
 </style> 
