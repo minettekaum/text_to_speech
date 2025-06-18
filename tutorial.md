@@ -25,6 +25,7 @@ Default settings were used except for `Max New Tokens`, which was set to 2020.
 
 <audio controls>
   <source src="assets/demo_audio.wav" type="audio/wav">
+  Your browser does not support the audio element.
 </audio>
 
 ---
@@ -61,7 +62,7 @@ Before deploying the app, ensure you have:
 
 ### Prerequisites
 
-- Python 3.8+
+- Python 3.6 - 3.10
 - Node.js 16+
 - pnpm
 - uv (Python package installer)
@@ -84,7 +85,7 @@ Before deploying the app, ensure you have:
 
 The `backend/` directory includes a `dia` folder with a trimmed-down version of the Dia model from [Nari Labs](https://github.com/nari-labs/dia.git). This approach avoids loading unnecessary components.
 
-You can optimize the model for faster inference using Pruna AI. Follow this [tutorial](https://www.koyeb.com/tutorials/deploy-flux-models-with-pruna-ai-for-8x-faster-inference-on-koyeb) for guidance.
+You can optimise the model for faster inference using Pruna AI. Follow this [tutorial](https://www.koyeb.com/tutorials/deploy-flux-models-with-pruna-ai-for-8x-faster-inference-on-koyeb) for guidance.
 
 ---
 
@@ -131,7 +132,7 @@ Deploy the app using the Koyeb control panel or the [CLI](https://www.koyeb.com/
 
 ```bash
 koyeb deploy . text_to_voice/backend \
-   --instance-type gpu-nvidia-l40s \
+   --instance-type gpu-nvidia-A100 \
    --region na \
    --type web \
    --port 8000:http \
@@ -167,4 +168,9 @@ koyeb deploy . text_to_voice/frontend \
 * Inspect Docker image build logs for errors.
 * Review Koyeb logs for networking and configuration issues.
 
-For further assistance, consult the [Koyeb Documentation](https://www.koyeb.com/docs).
+For further assistance, go to the [Koyeb Documentation](https://www.koyeb.com/docs).
+
+## Conclusion
+This tutorial has guided you through setting up the backend with FastAPI, creating an interactive frontend with SvelteKit, and deploying the application on Koyeb. You can now explore further customisation, optimise the model for better performance, or expand the app’s features.
+
+For further assistance, go to the [Koyeb Documentation](https://www.koyeb.com/docs) and [Nari Labs](https://huggingface.co/nari-labs/Dia-1.6B).

@@ -33,7 +33,7 @@
     let temperature = 1.2;   
     let topP = 0.9;          
     let cfgFilterTopK = 32;   
-    let speedFactor = 0.9;
+    let speedFactor = 0.9;    
 
     function updateAvailableSpeakers() {
         if (messages.length === 0) {
@@ -52,8 +52,8 @@
     // Event handlers for ChatInterface
     function handleMessagesUpdated(event: CustomEvent<Message[]>) {
         messages = event.detail;
-        updateAvailableSpeakers();
-    }
+            updateAvailableSpeakers();
+        }
 
     function handleSpeakerChanged(event: CustomEvent<string>) {
         selectedSpeaker = event.detail;
@@ -93,9 +93,9 @@
 
     // Event handlers for GenerationButton
     function handleAudioGenerated(event: CustomEvent<string>) {
-        // Clean up any existing audio URL
-        if (audioUrl) {
-            URL.revokeObjectURL(audioUrl);
+            // Clean up any existing audio URL
+            if (audioUrl) {
+                URL.revokeObjectURL(audioUrl);
         }
         audioUrl = event.detail;
         error = null;
@@ -103,9 +103,9 @@
 
     function handleGenerationError(event: CustomEvent<string>) {
         error = event.detail;
-        if (audioUrl) {
-            URL.revokeObjectURL(audioUrl);
-            audioUrl = null;
+            if (audioUrl) {
+                URL.revokeObjectURL(audioUrl);
+                audioUrl = null;
         }
     }
 
