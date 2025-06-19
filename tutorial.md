@@ -12,7 +12,7 @@ Dia-1.6B is a text-to-speech model by Nari Labs, known for its natural voice mod
 
 ## Demo
 
-Experience the app in action:
+Let's start by looking at a demo and a couple of examples:
 
 ![Text-to-Speech App Demo](assets/demo_screen_recording.gif)
 
@@ -32,7 +32,7 @@ Experience the app in action:
 ### Generation Parameters:
 #### Example 1: 
 
-Default settings were used, except for `Max New Tokens`, which was set to 2020, and no reference audio was provided.
+I used the default settings, except for `Max New Tokens`, which I set to 2020, and I provided no reference audio for this one.
 
 [Click here to listen to the generated audio](assets/demo_audio_french_coffee.wav)
 
@@ -42,7 +42,7 @@ Default settings were used, except for `Max New Tokens`, which was set to 2020, 
 </audio>
 
 ##### Example 2:
-The default settings were used, and no reference audio was provided.
+I used the default settings and didn't add a reference audio.
 
 [Click here to listen to the generated audio](assets/demo_audio_hike.wav)
 
@@ -57,7 +57,7 @@ The default settings were used, and no reference audio was provided.
 
 ## Project Structure
 
-The project consists of two main directories:
+Before taking a closer look at the project, it consists of two main directories:
 
 * **`backend/`:** Contains the FastAPI server and Dia model implementation.
 * **`frontend/`:** Contains the Svelte frontend application.
@@ -66,12 +66,13 @@ The project consists of two main directories:
 
 ## Deploy on Koyeb
 
+If you'd like to try the app out for yourself, you can easily deploy it on Koyeb and explore it. 
 ### Requirements
 
 Before deploying the app, ensure you have:
 
 * A [Koyeb](https://www.koyeb.com) account.
-* The [Koyeb CLI](https://www.koyeb.com/docs/cli) installed for command-line interaction.
+* The [Koyeb CLI](https://www.koyeb.com/docs/cli) installed for command-line interaction. It will be used later on.
 
 ### Backend Deployment
 
@@ -84,7 +85,7 @@ Before deploying the app, ensure you have:
 ---
 
 ## Local Setup
-
+In this section, we will take a closer look at the code in more detail. The focus will be more on the backend. The frontend can be run locally, so it is easier to try it out. 
 ### Prerequisites
 
 - Python 3.6 - 3.10
@@ -93,6 +94,7 @@ Before deploying the app, ensure you have:
 - uv (Python package installer)
 
 ### Step 1: Backend Setup
+Let's take a closer look at the [`main.py`](backend/main.py). There are other elements as well to the backend, to get it to run, but this is the interesting and important file for getting the backend to work correctly. 
 
 1. **Clone the repository and navigate to the backend directory:**
 
@@ -102,7 +104,7 @@ Before deploying the app, ensure you have:
    uv sync
    ```
 
-2. **Run the backend server locally:**
+2. **You can run the backend server locally, but I suggest deploying it on Koyeb for a smoother experience:**
 
    ```bash
    uv run fastapi dev main.py
@@ -355,26 +357,18 @@ async def run_inference(request: GenerateRequest):
 **Explanation:** This is the core endpoint that handles text-to-speech generation. It includes:
 - **Input Validation**: Ensures the text is not empty
 - **File Setup**: Creates paths for temporary and output files
-- **Audio Prompt Processing**: Handles voice cloning if provided (using `process_audio_prompt` from `utils.py`)
+- **Audio Prompt Processing**: Handles voice cloning if provided
 - **Model Generation**: Calls the Dia model with all parameters
 - **Audio Processing**: Applies speed factor and converts to WAV format
 - **File Output**: Saves and returns the audio file
 - **Error Handling**: Comprehensive error handling with proper cleanup
 
-### Summary
-
-This FastAPI application provides a complete text-to-speech service using the Dia model. It handles:
-- Model lifecycle management
-- Voice cloning with audio prompts
-- Audio processing and speed control
-- File management and cleanup
-- Error handling and logging
-- CORS for frontend integration
 You can optimise the model for faster inference using Pruna AI. Follow this [tutorial](https://www.koyeb.com/tutorials/deploy-flux-models-with-pruna-ai-for-8x-faster-inference-on-koyeb) for guidance.
 
 ---
 
 ### Step 2: Frontend Setup
+The frontend isn't in as big of focus as the backend in this project. You can easily play around and try the frontend out to get a layout and features that you like.
 
 1. **Navigate to the frontend directory:**
 
@@ -410,7 +404,7 @@ The frontend uses SvelteKit with a modular component architecture:
 
 ### Deployment on Koyeb
 
-Deploy the app using the Koyeb control panel or the [CLI](https://www.koyeb.com/docs/build-and-deploy/cli/installation).
+You can deploy the app using the Koyeb control panel or the [CLI](https://www.koyeb.com/docs/build-and-deploy/cli/installation). 
 
 ### CLI Deployment Commands
 
