@@ -19,22 +19,29 @@ Experience the app in action:
 ![Text-to-Speech App Demo](assets/demo_screen_recording.gif)
 
 ### Example Prompt:
-
+#### Example 1:
 * **Speaker 1:** I could really use a French coffee right now.
 * **Speaker 2:** Oh! I found this charming French café around the corner. So authentic!
 * **Speaker 1:** Really? Do they have fresh pastries?
 * **Speaker 2:** Yes! Their chocolate croissants are amazing! And the owner is from Paris. *(humming)*
 
-#### Generation Parameters:
+#### Example 2: 
+
+### Generation Parameters:
+#### Example 1: 
 
 Default settings were used except for `Max New Tokens`, which was set to 2020.
 
-[Click here to listen to the generated audio](assets/demo_audio.wav)
+[Click here to listen to the generated audio](assets/demo_audio_french_coffee.wav)
 
 <audio controls>
-  <source src="assets/demo_audio.wav" type="audio/wav">
+  <source src="assets/demo_audio_french_coffee.wav" type="audio/wav">
   Your browser does not support the audio element.
 </audio>
+
+##### Example 2:
+
+
 
 ---
 
@@ -85,7 +92,7 @@ Before deploying the app, ensure you have:
    uv sync
    ```
 
-2. **Run the backend server:**
+2. **Run the backend server locally:**
 
    ```bash
    uv run fastapi dev main.py
@@ -93,6 +100,266 @@ Before deploying the app, ensure you have:
 
 The `backend/` directory includes a `dia` folder with a trimmed-down version of the Dia model from [Nari Labs](https://github.com/nari-labs/dia.git). This approach avoids loading unnecessary components.
 
+Let's take a closer look at the [`main.py](backend/main.py) file:
+
+
+### 1. Setup and Initialization
+```python
+import logging
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+import time
+from typing import Optional, List
+from pathlib import Path
+import soundfile as sf
+import numpy as np
+import torch
+from dia.model import Dia
+from utils import process_audio_prompt
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler()],
+)
+logger = logging.getLogger(__name__)
+
+AUDIO_DIR = Path("audio_files")
+AUDIO_DIR.mkdir(exist_ok=True)
+UPLOADS_DIR = Path("upload_files")
+UPLOADS_DIR.mkdir(exist_ok=True)
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+logger.info(f"Using DEVICE: {DEVICE}")
+```
+
+**Explanation:**
+- **Imports**: All necessary libraries for API, audio, and model operations.
+- **Logging**: Structured logging for debugging and monitoring.
+- **Directory Setup**: Ensures directories for audio and uploads exist.
+- **Device Detection**: Chooses GPU (CUDA) if available, otherwise CPU, and logs the choice.
+
+### 2. Audio Prompt Processing Utility
+```python
+from utils import process_audio_prompt
+```
+
+**Explanation:**
+- The `process_audio_prompt` function is imported from `utils.py`.
+- This function is used to process the audio prompt input for voice cloning in the main generation endpoint.
+
+### 3. ModelManager Class
+```python
+class ModelManager:
+    """Manages the loading, unloading and access to the Dia model."""
+
+    def __init__(self):
+        self.device = DEVICE
+        self.dtype_map = {
+            "cpu": "float32",
+            "cuda": "float16",  
+        }
+
+    def load_model(self):
+        """Load the Dia model with appropriate configuration."""
+        try:
+            dtype = self.dtype_map.get(self.device, "float16")
+            logger.info(f"Loading model with {dtype} on {self.device}")
+            self.model = Dia.from_pretrained("nari-labs/Dia-1.6B", compute_dtype=dtype, device=self.device)
+        except Exception as e:
+            logger.error(f"Error loading model: {e}")
+            raise
+
+    def unload_model(self):
+        """Cleanup method to properly unload the model."""
+        try:
+            del self.model
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception as e:
+            logger.error(f"Error unloading model: {e}")
+
+    def get_model(self):
+        """Get the current model instance."""
+        if self.model is None:
+            raise RuntimeError("Model not loaded. Call load_model() first.")
+        return self.model
+
+
+model_manager = ModelManager()
+```
+
+**Explanation:** This class manages the Dia model lifecycle:
+- **`__init__`**: Sets up device and data type mapping (float32 for CPU, float16 for GPU to save memory)
+- **`load_model`**: Loads the 1.6B parameter Dia model from Hugging Face
+- **`unload_model`**: Properly cleans up model memory, especially important for GPU memory
+- **`get_model`**: Provides access to the loaded model with error checking
+
+### 4. API Setup and Configuration
+```python
+class AudioPrompt(BaseModel):
+    sample_rate: int
+    audio_data: List[float]  
+
+class GenerateRequest(BaseModel):
+    text_input: str
+    audio_prompt_input: Optional[AudioPrompt] = None
+    max_new_tokens: int = 1024
+    cfg_scale: float = 3.0
+    temperature: float = 1.3
+    top_p: float = 0.95
+    cfg_filter_top_k: int = 35
+    speed_factor: float = 0.94
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    """Handle model lifecycle during application startup and shutdown."""
+    logger.info("Starting up application...")
+    model_manager.load_model()
+    yield
+    logger.info("Shutting down application...")
+    model_manager.unload_model()
+    logger.info("Application shut down successfully")
+
+app = FastAPI(
+    title="Dia Text-to-Voice API",
+    description="API for generating voice using Dia model",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://soft-lexine-challenge-d3e578f4.koyeb.app",
+        "https://gothic-sara-ann-challenge-8bad5bca.koyeb.app",
+        "http://localhost:5173"
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/api/health")
+async def health_check():
+    return {"status": "ok", "message": "Backend is running"}
+```
+
+**Explanation:** This section covers the complete API setup:
+- **Data Models**: Pydantic models for request validation (`AudioPrompt` and `GenerateRequest`)
+- **Application Lifecycle**: Manages model loading/unloading during server startup/shutdown
+- **FastAPI App**: Creates the application with metadata and CORS middleware for frontend integration
+- **Health Check**: Simple endpoint to verify the backend is running
+
+### 5. Main Generation Endpoint and Input Validation 
+```python
+@app.post("/api/generate")
+async def run_inference(request: GenerateRequest):
+    """
+    Runs Nari inference using the model from model_manager and provided inputs.
+    Uses temporary files for text and audio prompt compatibility with inference.generate.
+    """
+    if not request.text_input or request.text_input.isspace():
+        raise HTTPException(status_code=400, detail="Text input cannot be empty.")
+
+    temp_txt_file_path = None
+    temp_audio_prompt_path = None
+    output_filepath = AUDIO_DIR / f"{int(time.time())}.wav"
+
+    try:
+        prompt_path_for_generate = None
+        if request.audio_prompt_input is not None:
+            prompt_path_for_generate = process_audio_prompt(request.audio_prompt_input)
+
+        model = model_manager.get_model()
+
+        start_time = time.time()
+
+        with torch.inference_mode():
+            logger.info(f"Starting generation with audio prompt: {prompt_path_for_generate}")
+            output_audio_np = model.generate(
+                request.text_input,
+                max_tokens=request.max_new_tokens,
+                cfg_scale=request.cfg_scale,
+                temperature=request.temperature,
+                top_p=request.top_p,
+                cfg_filter_top_k=request.cfg_filter_top_k,
+                use_torch_compile=False,
+                audio_prompt=prompt_path_for_generate,
+            )
+            logger.info(f"Generation completed. Output shape: {output_audio_np.shape if output_audio_np is not None else None}")
+
+        end_time = time.time()
+        logger.info(f"Generation finished in {end_time - start_time:.2f} seconds.")
+
+        if output_audio_np is None:
+            raise HTTPException(status_code=500, detail="Model generated no output")
+
+        output_sr = 44100
+
+        original_len = len(output_audio_np)
+        speed_factor = max(0.1, min(request.speed_factor, 5.0))
+        target_len = int(original_len / speed_factor)
+        
+        if target_len != original_len and target_len > 0:
+            x_original = np.arange(original_len)
+            x_resampled = np.linspace(0, original_len - 1, target_len)
+            output_audio_np = np.interp(x_resampled, x_original, output_audio_np)
+            logger.debug(f"Resampled audio from {original_len} to {target_len} samples")
+
+        output_audio_np = np.clip(output_audio_np, -1.0, 1.0)
+        output_audio_np = (output_audio_np * 32767).astype(np.int16)
+
+        sf.write(str(output_filepath), output_audio_np, output_sr)
+        logger.info(f"Audio saved to {output_filepath}")
+
+        return FileResponse(
+            path=str(output_filepath),
+            media_type="audio/wav",
+            filename=output_filepath.name
+        )
+
+    except Exception as e:
+        logger.error(f"Error during inference: {e}")
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=str(e))
+
+    finally:
+        if temp_txt_file_path and Path(temp_txt_file_path).exists():
+            try:
+                Path(temp_txt_file_path).unlink()
+                logger.debug(f"Deleted temporary text file: {temp_txt_file_path}")
+            except OSError as e:
+                logger.warning(f"Error deleting temporary text file {temp_txt_file_path}: {e}")
+        if temp_audio_prompt_path and Path(temp_audio_prompt_path).exists():
+            try:
+                Path(temp_audio_prompt_path).unlink()
+                logger.debug(f"Deleted temporary audio prompt file: {temp_audio_prompt_path}")
+            except OSError as e:
+                logger.warning(f"Error deleting temporary audio prompt file {temp_audio_prompt_path}: {e}")
+```
+
+**Explanation:** This is the core endpoint that handles text-to-speech generation. It includes:
+- **Input Validation**: Ensures the text is not empty
+- **File Setup**: Creates paths for temporary and output files
+- **Audio Prompt Processing**: Handles voice cloning if provided (using `process_audio_prompt` from `utils.py`)
+- **Model Generation**: Calls the Dia model with all parameters
+- **Audio Processing**: Applies speed factor and converts to WAV format
+- **File Output**: Saves and returns the audio file
+- **Error Handling**: Comprehensive error handling with proper cleanup
+
+### Summary
+
+This FastAPI application provides a complete text-to-speech service using the Dia model. It handles:
+- Model lifecycle management
+- Voice cloning with audio prompts
+- Audio processing and speed control
+- File management and cleanup
+- Error handling and logging
+- CORS for frontend integration
 You can optimise the model for faster inference using Pruna AI. Follow this [tutorial](https://www.koyeb.com/tutorials/deploy-flux-models-with-pruna-ai-for-8x-faster-inference-on-koyeb) for guidance.
 
 ---
@@ -121,12 +388,13 @@ The frontend uses SvelteKit with a modular component architecture:
 
 #### Core Components:
 
-* **`ChatInterface.svelte`:** Manages message display, input handling, and speaker selection.
-* **`GenerationSettings.svelte`:** Provides controls for AI model parameters with tooltips.
-* **`SoundEffectsPanel.svelte`:** Allows sound effect selection and includes example dialogues.
-* **`AudioControls.svelte`:** Handles audio recording, file uploads, and playback.
-* **`GenerationButton.svelte`:** Facilitates TTS generation and communicates with the backend.
-* **`AudioOutput.svelte`:** Displays playback and download options for generated audio.
+* **[`ChatInterface.svelte`](frontend/src/components/ChatInterface.svelte):** Manages message display, input handling, and speaker selection.
+* **[`GenerationSettings.svelte`](frontend/src/components/GenerationSettingd.svelte):** Provides controls for AI model parameters with tooltips.
+* **[`SoundEffectsPanel.svelte`](frontend/src/components/SoundEffectsPanel.svelte):** Allows sound effect selection and includes example dialogues.
+* **[`AudioControls.svelte`](frontend/src/components/AudioControls.svelte):** Handles audio recording, file uploads, and playback.
+* **[`GenerationButton.svelte`](frontend/src/components/GenerationSettings.svelte):** Facilitates TTS generation and communicates with the backend.
+* **[`AudioOutput.svelte`](frontend/src/components/AudioOutput.svelte):** Displays playback and download options for generated audio.
+* **[`home.svelte`](frontend/src/routes/Home.svelte):** Main landing page component that orchestrates the text-to-voice interface.
 
 ---
 
@@ -179,6 +447,6 @@ koyeb deploy . text_to_voice/frontend \
 For further assistance, go to the [Koyeb Documentation](https://www.koyeb.com/docs).
 
 ## Summary
-This tutorial has guided you through setting up the backend with FastAPI, creating an interactive frontend with SvelteKit, and deploying the application on Koyeb. You can now explore further customisation, optimise the model for better performance, or expand the app’s features.
+This tutorial has guided you through setting up the backend with FastAPI, creating an interactive frontend with SvelteKit, and deploying the application on Koyeb. You can now explore further customisation, optimise the model for better performance, or expand the app's features.
 
 For further assistance, go to the [Koyeb Documentation](https://www.koyeb.com/docs) and [Nari Labs](https://huggingface.co/nari-labs/Dia-1.6B).

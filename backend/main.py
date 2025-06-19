@@ -105,11 +105,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://soft-lexine-challenge-d3e578f4.koyeb.app",
-        "https://gothic-sara-ann-challenge-8bad5bca.koyeb.app",
-        "http://localhost:5173"
-    ],
+    allow_origins=[*],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
