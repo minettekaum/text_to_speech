@@ -2,8 +2,11 @@ import logging
 import numpy as np
 import tempfile
 from fastapi import HTTPException
+from typing import Optional
 
-
+class AudioPrompt(BaseModel):
+    sample_rate: int
+    audio_data: List[float]
 
 logging.basicConfig(
     level=logging.INFO,

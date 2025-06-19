@@ -11,6 +11,14 @@ dependencies = [
     "pydantic>=2.11.5",
     "safetensors>=0.5.3",
     "soundfile>=0.13.1",
-    "torch>=2.7.0",
-    "torchaudio>=2.7.0",
+    "torch>=2.7.0+cpu",
+    "torchaudio>=2.7.0+cpu",
 ]
+
+[tool.uv.sources]
+torch = { index = "cpu" }
+torchaudio = { index = "cpu" }
+
+[[tool.uv.index]]
+name = "cpu"
+url = "https://download.pytorch.org/whl/cpu"
