@@ -4,6 +4,14 @@ Dia-1.6B is a text-to-speech model by Nari Labs, known for its natural voice mod
 
 ![Text-to-Speech App Demo](assets/demo.png)
 
+## Steps 
+- Demo
+- Project structure
+- Deployment
+- Local Setup
+- Truble shootingH
+- Summary
+
 ## Demo
 
 Experience the app in action:
@@ -122,7 +130,7 @@ The frontend uses SvelteKit with a modular component architecture:
 
 ---
 
-## Deployment on Koyeb
+### Deployment on Koyeb
 
 Deploy the app using the Koyeb control panel or the [CLI](https://www.koyeb.com/docs/build-and-deploy/cli/installation).
 
@@ -170,7 +178,7 @@ koyeb deploy . text_to_voice/frontend \
 
 For further assistance, go to the [Koyeb Documentation](https://www.koyeb.com/docs).
 
-## Conclusion
+## Summary
 This tutorial has guided you through setting up the backend with FastAPI, creating an interactive frontend with SvelteKit, and deploying the application on Koyeb. You can now explore further customisation, optimise the model for better performance, or expand the app’s features.
 
 For further assistance, go to the [Koyeb Documentation](https://www.koyeb.com/docs) and [Nari Labs](https://huggingface.co/nari-labs/Dia-1.6B).
