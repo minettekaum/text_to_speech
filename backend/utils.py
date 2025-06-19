@@ -1,13 +1,10 @@
 import logging
 import numpy as np
 import tempfile
+import soundfile as sf
 from fastapi import HTTPException
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel
-
-class AudioPrompt(BaseModel):
-    sample_rate: int
-    audio_data: List[float]
 
 logging.basicConfig(
     level=logging.INFO,
@@ -59,7 +56,7 @@ def save_audio_to_temp_file(audio_data: np.ndarray, sample_rate: int) -> str:
         logger.error(f"Error writing temporary audio file: {write_e}")
         raise HTTPException(status_code=400, detail=f"Failed to save audio prompt: {write_e}")
 
-def process_audio_prompt(audio_prompt: AudioPrompt) -> Optional[str]:
+def process_audio_prompt(audio_prompt) -> Optional[str]:
     """
     Process the audio prompt input and return the path to the temporary audio file.
     Returns None if the audio is empty or silent.
