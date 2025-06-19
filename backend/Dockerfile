@@ -33,17 +33,11 @@ RUN apt-get update && apt-get install -y \
 # Set working directory
 WORKDIR /app
 
-# Copy only the virtual environment from builder
-COPY --from=builder /app/.venv /app/.venv
-
 # Copy application code
 COPY main.py utils.py ./
 
 # Create directory for audio files and uploads
 RUN mkdir -p audio_files upload_files
-
-# Ensure the virtual environment is in PATH
-ENV PATH="/app/.venv/bin:$PATH"
 
 # Expose the port the app runs on
 EXPOSE 8000
