@@ -5,12 +5,12 @@ Dia-1.6B is a text-to-speech model by Nari Labs, known for its natural voice mod
 ![Text-to-Speech App Demo](assets/demo.png)
 
 ## Steps 
-- Demo
-- Project structure
-- Deployment
-- Local Setup
-- Truble shootingH
-- Summary
+- [Demo](#demo)
+- [Project structure](#project-structure)
+- [Deployment](#deploy-on-koyeb)
+- [Local Setup](#local-setup)
+- [Troubleshooting](#troubleshooting)
+- [Summary](#summary)
 
 ## Demo
 
@@ -34,7 +34,7 @@ Experience the app in action:
 ### Generation Parameters:
 #### Example 1: 
 
-Default settings were used except for `Max New Tokens`, which was set to 2020 and and no reference audio.
+Default settings were used, except for `Max New Tokens`, which was set to 2020, and no reference audio was provided.
 
 [Click here to listen to the generated audio](assets/demo_audio_french_coffee.wav)
 
@@ -44,7 +44,7 @@ Default settings were used except for `Max New Tokens`, which was set to 2020 an
 </audio>
 
 ##### Example 2:
-Default settings were used and no reference audio.
+The default settings were used, and no reference audio was provided.
 
 [Click here to listen to the generated audio](assets/demo_audio_hike.wav)
 
@@ -115,7 +115,7 @@ The `backend/` directory includes a `dia` folder with the Dia model from [Nari L
 Let's take a closer look at the [`main.py`](backend/main.py) file:
 
 
-### 1. Setup and Initialization
+### 1. Setup and Initialisation
 ```python
 import logging
 from contextlib import asynccontextmanager
@@ -404,7 +404,7 @@ The frontend uses SvelteKit with a modular component architecture:
 * **[`GenerationSettings.svelte`](frontend/src/components/GenerationSettingd.svelte):** Provides controls for AI model parameters with tooltips.
 * **[`SoundEffectsPanel.svelte`](frontend/src/components/SoundEffectsPanel.svelte):** Allows sound effect selection and includes example dialogues.
 * **[`AudioControls.svelte`](frontend/src/components/AudioControls.svelte):** Handles audio recording, file uploads, and playback.
-* **[`GenerationButton.svelte`](frontend/src/components/GenerationSettings.svelte):** Facilitates TTS generation and communicates with the backend.
+* **[`GenerationButton.svelte`](frontend/src/components/GenerationSettings.svelte):** Facilitates TTS generation and communicates with the backend. Remember to change the URL on line 123 if your deploying it your self.
 * **[`AudioOutput.svelte`](frontend/src/components/AudioOutput.svelte):** Displays playback and download options for generated audio.
 * **[`home.svelte`](frontend/src/routes/Home.svelte):** Main landing page component that orchestrates the text-to-voice interface.
 
