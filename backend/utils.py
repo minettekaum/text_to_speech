@@ -3,6 +3,7 @@ import numpy as np
 import tempfile
 from fastapi import HTTPException
 from typing import Optional
+from pydantic import BaseModel
 
 class AudioPrompt(BaseModel):
     sample_rate: int

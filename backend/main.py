@@ -16,7 +16,7 @@ import numpy as np
 import torch
 from dia.model import Dia
 
-from utils import process_audio_prompt
+from utils import AudioPrompt, process_audio_prompt
 
 logging.basicConfig(
     level=logging.INFO,
@@ -71,10 +71,7 @@ class ModelManager:
 
 
 model_manager = ModelManager()
-
-class AudioPrompt(BaseModel):
-    sample_rate: int
-    audio_data: List[float]  
+ 
 
 class GenerateRequest(BaseModel):
     text_input: str
