@@ -26,11 +26,15 @@ Experience the app in action:
 * **Speaker 2:** Yes! Their chocolate croissants are amazing! And the owner is from Paris. *(humming)*
 
 #### Example 2: 
+* **Speaker 1:** Hey, how was your weekend?
+* **Speaker 2:** Amazing! Went hiking in the mountains. The view was breathtaking!
+* **Speaker 1:** That sounds incredible! I need to get out more.
+* **Speaker 2:** You should join me next time! The trail I found is perfect for beginners (laughs)
 
 ### Generation Parameters:
 #### Example 1: 
 
-Default settings were used except for `Max New Tokens`, which was set to 2020.
+Default settings were used except for `Max New Tokens`, which was set to 2020 and and no reference audio.
 
 [Click here to listen to the generated audio](assets/demo_audio_french_coffee.wav)
 
@@ -40,6 +44,14 @@ Default settings were used except for `Max New Tokens`, which was set to 2020.
 </audio>
 
 ##### Example 2:
+Default settings were used and no reference audio.
+
+[Click here to listen to the generated audio](assets/demo_audio_hike.wav)
+
+<audio controls>
+  <source src="assets/demo_audio_hike.wav" type="audio/wav">
+  Your browser does not support the audio element.
+</audio>
 
 
 
@@ -98,9 +110,9 @@ Before deploying the app, ensure you have:
    uv run fastapi dev main.py
    ```
 
-The `backend/` directory includes a `dia` folder with a trimmed-down version of the Dia model from [Nari Labs](https://github.com/nari-labs/dia.git). This approach avoids loading unnecessary components.
+The `backend/` directory includes a `dia` folder with the Dia model from [Nari Labs](https://github.com/nari-labs/dia.git). This approach avoids loading unnecessary components.
 
-Let's take a closer look at the [`main.py](backend/main.py) file:
+Let's take a closer look at the [`main.py`](backend/main.py) file:
 
 
 ### 1. Setup and Initialization
@@ -147,7 +159,7 @@ from utils import process_audio_prompt
 ```
 
 **Explanation:**
-- The `process_audio_prompt` function is imported from `utils.py`.
+- The `process_audio_prompt` function is imported from [`utils.py`](backend/utils.py).
 - This function is used to process the audio prompt input for voice cloning in the main generation endpoint.
 
 ### 3. ModelManager Class
