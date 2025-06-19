@@ -15,10 +15,4 @@ dependencies = [
     "torchaudio>=2.7.0",
 ]
 
-[tool.uv.sources]
-torch = { index = "cpu" }
-torchaudio = { index = "cpu" }
 
-[[tool.uv.index]]
-name = "cpu"
-url = "https://download.pytorch.org/whl/cpu"
