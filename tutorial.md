@@ -2,8 +2,6 @@
 
 Dia-1.6B is a text-to-speech model by Nari Labs, known for its natural voice modulation and expressive intonation. This tutorial will guide you through building a full-stack TTS application using Dia-1.6B with a FastAPI backend, a Svelte frontend, and deployment on Koyeb.
 
-![Text-to-Speech App Demo](assets/demo.png)
-
 ## Steps 
 - [Demo](#demo)
 - [Project structure](#project-structure)
