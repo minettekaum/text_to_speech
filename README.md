@@ -92,3 +92,20 @@ For deployment check the [tutorial](tutorial.md)
 3. **Audio generation problems**
    - Check the input text format
    - Verify the model parameters
+
+## License
+
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+
+### Third-Party Components
+
+This project incorporates the Dia TTS model:
+
+- **Dia TTS Model**: Licensed under Apache License 2.0
+  - Original repository: [https://github.com/nari-labs/dia](https://github.com/nari-labs/dia)
+  - Description: A TTS model capable of generating ultra-realistic dialogue in one pass
+  - Copyright: nari-labs
+
+The Dia model components in `backend/dia/` are based on or derived from the original Dia project. See the [NOTICE](NOTICE) file for detailed attribution information.
+
+
