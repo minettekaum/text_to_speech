@@ -451,6 +451,14 @@ koyeb deploy . text_to_voice/frontend \
 For further assistance, go to the [Koyeb Documentation](https://www.koyeb.com/docs).
 
 ## Summary
-This tutorial has guided you through setting up the backend with FastAPI, creating an interactive frontend with SvelteKit, and deploying the application on Koyeb. You can now explore further customisation, optimise the model for better performance, or expand the app's features.
+This tutorial has guided you through setting up the backend with FastAPI, creating an interactive frontend with SvelteKit, and deploying the application on Koyeb.
+
+You can now explore further customisation, optimise the model for better performance, or expand the app's features. Here are some examples:
+
+**1. Audio Caching System**
+Implement a caching mechanism that stores generated audio files using a hashing function of the request parameters. This prevents regenerating identical content and significantly improves response times for repeated requests.
+
+**2. Voice Cloning Gallery**
+Create a library of pre-recorded voices with different accents and styles. Implement voice preset selection with audio samples, allowing users to choose from various voice options without needing to upload reference audio.
 
 For further assistance, go to the [Koyeb Documentation](https://www.koyeb.com/docs) and [Nari Labs](https://huggingface.co/nari-labs/Dia-1.6B).
