@@ -97,8 +97,8 @@ async def lifespan(_: FastAPI):
     logger.info("Application shut down successfully")
 
 app = FastAPI(
-    title="Dia Text-to-Voice API",
-    description="API for generating voice using Dia model",
+    title="Dia Text-to-Speech API",
+    description="API for generating speech using Dia model",
     version="1.0.0",
     lifespan=lifespan,
 )
