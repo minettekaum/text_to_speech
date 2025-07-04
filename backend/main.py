@@ -115,7 +115,11 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://soft-lexine-challenge-d3e578f4.koyeb.app",
+        "https://gothic-sara-ann-challenge-8bad5bca.koyeb.app",
+        "http://localhost:5173"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -147,7 +151,6 @@ async def run_inference(request: GenerateRequest):
 
         start_time = time.time()
 
-        # Prepare processor inputs
         processor_inputs = processor(
             text=[request.text_input],
             padding=True,
@@ -155,7 +158,6 @@ async def run_inference(request: GenerateRequest):
         )
         processor_inputs = {k: v.to(model.device) for k, v in processor_inputs.items()}
 
-        # Add audio prompt if present
         if prompt_path_for_generate is not None:
             processor_inputs["audio_prompt"] = prompt_path_for_generate
 
@@ -171,7 +173,6 @@ async def run_inference(request: GenerateRequest):
             )
             logger.info(f"Generation completed. Output shape: {outputs.shape if hasattr(outputs, 'shape') else type(outputs)}")
 
-        # Decode and save audio
         decoded = processor.batch_decode(outputs)
         processor.save_audio(decoded, str(output_filepath))
         logger.info(f"Audio saved to {output_filepath}")
