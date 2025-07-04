@@ -6,15 +6,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-
 import time
 from typing import Optional, List
 from pathlib import Path
 
-import soundfile as sf
-import numpy as np
 import torch
-from dia.model import Dia
+from transformers import AutoProcessor, DiaForConditionalGeneration
 
 from utils import process_audio_prompt
 
@@ -35,40 +32,54 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 logger.info(f"Using DEVICE: {DEVICE}")
 
 class ModelManager:
-    """Manages the loading, unloading and access to the Dia model."""
+    """Manages the loading, unloading and access to the Dia model and processor using Hugging Face Transformers."""
 
     def __init__(self):
         self.device = DEVICE
         self.dtype_map = {
-            "cpu": "float32",
-            "cuda": "float16",  
+            "cpu": torch.float32,
+            "cuda": torch.float16,  
         }
+        self.model = None
+        self.processor = None
+        self.model_id = "nari-labs/Dia-1.6B-0626"
 
     def load_model(self):
-        """Load the Dia model with appropriate configuration."""
+        """Load the Dia model and processor with appropriate configuration using Hugging Face Transformers."""
         try:
-            dtype = self.dtype_map.get(self.device, "float16")
-            logger.info(f"Loading model with {dtype} on {self.device}")
-            self.model = Dia.from_pretrained("nari-labs/Dia-1.6B", compute_dtype=dtype, device=self.device)
+            dtype = self.dtype_map.get(self.device, torch.float16)
+            logger.info(f"Loading model and processor with {dtype} on {self.device}")
+            self.processor = AutoProcessor.from_pretrained(self.model_id)
+            self.model = DiaForConditionalGeneration.from_pretrained(
+                self.model_id,
+                torch_dtype=dtype,
+                device_map=self.device,
+                attn_implementation="flash_attention_2" if self.device == "cuda" else "eager"
+            )
+            logger.info("Model and processor loaded successfully")
         except Exception as e:
-            logger.error(f"Error loading model: {e}")
+            logger.error(f"Error loading model or processor: {e}")
             raise
 
     def unload_model(self):
-        """Cleanup method to properly unload the model."""
+        """Cleanup method to properly unload the model and processor."""
         try:
             del self.model
+            del self.processor
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
         except Exception as e:
-            logger.error(f"Error unloading model: {e}")
+            logger.error(f"Error unloading model or processor: {e}")
 
     def get_model(self):
-        """Get the current model instance."""
         if self.model is None:
             raise RuntimeError("Model not loaded. Call load_model() first.")
         return self.model
 
+    def get_processor(self):
+        if self.processor is None:
+            raise RuntimeError("Processor not loaded. Call load_model() first.")
+        return self.processor
 
 model_manager = ModelManager()
 
@@ -78,7 +89,7 @@ class AudioPrompt(BaseModel):
 
 class GenerateRequest(BaseModel):
     text_input: str
-    audio_prompt_input: Optional[AudioPrompt] = None
+    audio_prompt: Optional[AudioPrompt] = None
     max_new_tokens: int = 1024
     cfg_scale: float = 3.0
     temperature: float = 1.3
@@ -119,62 +130,55 @@ async def health_check():
 @app.post("/api/generate")
 async def run_inference(request: GenerateRequest):
     """
-    Runs Nari inference using the model from model_manager and provided inputs.
-    Uses temporary files for text and audio prompt compatibility with inference.generate.
+    Runs Dia inference using the model and processor from model_manager and provided inputs.
+    Uses temporary files for audio prompt compatibility with inference.generate.
     """
     if not request.text_input or request.text_input.isspace():
         raise HTTPException(status_code=400, detail="Text input cannot be empty.")
 
-    temp_txt_file_path = None
-    temp_audio_prompt_path = None
     output_filepath = AUDIO_DIR / f"{int(time.time())}.wav"
 
     try:
         prompt_path_for_generate = None
-        if request.audio_prompt_input is not None:
-            prompt_path_for_generate = process_audio_prompt(request.audio_prompt_input)
+        if request.audio_prompt is not None:
+            prompt_path_for_generate = process_audio_prompt(request.audio_prompt)
 
         model = model_manager.get_model()
+        processor = model_manager.get_processor()
 
         start_time = time.time()
 
+        # Prepare processor inputs
+        processor_inputs = processor(
+            text=[request.text_input],
+            padding=True,
+            return_tensors="pt"
+        )
+        processor_inputs = {k: v.to(model.device) for k, v in processor_inputs.items()}
+
+        # Add audio prompt if present
+        if prompt_path_for_generate is not None:
+            processor_inputs["audio_prompt"] = prompt_path_for_generate
+
         with torch.inference_mode():
             logger.info(f"Starting generation with audio prompt: {prompt_path_for_generate}")
-            output_audio_np = model.generate(
-                request.text_input,
-                max_tokens=request.max_new_tokens,
-                cfg_scale=request.cfg_scale,
+            outputs = model.generate(
+                **processor_inputs,
+                max_new_tokens=request.max_new_tokens,
+                guidance_scale=request.cfg_scale,
                 temperature=request.temperature,
                 top_p=request.top_p,
-                cfg_filter_top_k=request.cfg_filter_top_k,
-                use_torch_compile=False,
-                audio_prompt=prompt_path_for_generate,
+                top_k=request.cfg_filter_top_k
             )
-            logger.info(f"Generation completed. Output shape: {output_audio_np.shape if output_audio_np is not None else None}")
+            logger.info(f"Generation completed. Output shape: {outputs.shape if hasattr(outputs, 'shape') else type(outputs)}")
+
+        # Decode and save audio
+        decoded = processor.batch_decode(outputs)
+        processor.save_audio(decoded, str(output_filepath))
+        logger.info(f"Audio saved to {output_filepath}")
 
         end_time = time.time()
         logger.info(f"Generation finished in {end_time - start_time:.2f} seconds.")
-
-        if output_audio_np is None:
-            raise HTTPException(status_code=500, detail="Model generated no output")
-
-        output_sr = 44100
-
-        original_len = len(output_audio_np)
-        speed_factor = max(0.1, min(request.speed_factor, 5.0))
-        target_len = int(original_len / speed_factor)
-        
-        if target_len != original_len and target_len > 0:
-            x_original = np.arange(original_len)
-            x_resampled = np.linspace(0, original_len - 1, target_len)
-            output_audio_np = np.interp(x_resampled, x_original, output_audio_np)
-            logger.debug(f"Resampled audio from {original_len} to {target_len} samples")
-
-        output_audio_np = np.clip(output_audio_np, -1.0, 1.0)
-        output_audio_np = (output_audio_np * 32767).astype(np.int16)
-
-        sf.write(str(output_filepath), output_audio_np, output_sr)
-        logger.info(f"Audio saved to {output_filepath}")
 
         return FileResponse(
             path=str(output_filepath),
@@ -188,17 +192,4 @@ async def run_inference(request: GenerateRequest):
             raise e
         raise HTTPException(status_code=500, detail=str(e))
 
-    finally:
-        if temp_txt_file_path and Path(temp_txt_file_path).exists():
-            try:
-                Path(temp_txt_file_path).unlink()
-                logger.debug(f"Deleted temporary text file: {temp_txt_file_path}")
-            except OSError as e:
-                logger.warning(f"Error deleting temporary text file {temp_txt_file_path}: {e}")
-        if temp_audio_prompt_path and Path(temp_audio_prompt_path).exists():
-            try:
-                Path(temp_audio_prompt_path).unlink()
-                logger.debug(f"Deleted temporary audio prompt file: {temp_audio_prompt_path}")
-            except OSError as e:
-                logger.warning(f"Error deleting temporary audio prompt file {temp_audio_prompt_path}: {e}")
 
