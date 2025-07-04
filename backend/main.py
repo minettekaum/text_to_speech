@@ -53,8 +53,7 @@ class ModelManager:
             self.model = DiaForConditionalGeneration.from_pretrained(
                 self.model_id,
                 torch_dtype=dtype,
-                device_map=self.device,
-                attn_implementation="flash_attention_2" if self.device == "cuda" else "eager"
+                device_map=self.device
             )
             logger.info("Model and processor loaded successfully")
         except Exception as e:
